@@ -1,0 +1,446 @@
+html {
+    min-height: 200px; /* Adjust the value to set your desired minimum viewport height */
+}
+
+
+
+h3{
+    margin: 0;
+}
+
+#top-info{
+    display: flex;
+    justify-content: space-between;
+}
+
+
+#game-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#body-content {
+    display: flex;
+    justify-content: center;
+    max-width: 916px;
+    max-width: 916px;
+}
+
+
+#gameboard {
+    width: 560px;
+    aspect-ratio: 1/1;
+    display: flex;
+    flex-wrap: wrap;
+    
+    border-style: solid;
+    border-width: 8px;
+    border-color: #9C090C;
+}
+
+
+#move-history {
+    background-color: rgb(84, 86, 82);
+    margin-left: 5px;
+    border-radius: 2px;
+
+    height: 560px;
+    width: 100%;
+    overflow: hidden; /* Hide overflow to prevent double scrollbars */
+}
+
+#move-history-content {
+    text-align: center;
+    height: 100%; /* Set a fixed height to enable scrolling */
+    overflow: auto; /* Enable scrolling when content overflows */
+    padding: 10px 0; /* Add padding for better appearance */
+    overflow-y: auto;
+    font-size: 15px;
+    font-family: monospace;
+}
+
+
+#move-history-content div:nth-child(even) {
+    padding: 10px 0;
+    
+}
+#move-history-content div:nth-child(2n+1) {
+    padding: 10px 0;
+    
+}
+
+/* ::-webkit-scrollbar {
+    width: 12px; 
+} */
+
+#score-board {
+    max-height: 576px;
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around
+}
+
+#player-score {
+    max-width: 100%;
+    margin-bottom: 10px;
+    margin-left: 5px;
+    display: flex;
+    justify-content: space-around;
+    flex-direction: row
+}
+
+#blue-score-board {
+    width: 48%;
+    height: 100%;
+    background-color: #006791;
+    border-radius: 5%;
+
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#red-score-board {
+    width: 48%;
+    height: 100%;
+    background-color: #9C090C;
+    border-radius: 5%;
+
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+span.score{
+    font-size: 70px;
+    color: white;
+    font-family: monospace;
+    
+}
+
+#info-display{
+    font-weight: 1000;
+    color: #9C090C;
+}
+
+/* ---------------------------------------ROOM CONTAINER-------------------------- */
+#room-form{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: cornflowerblue;
+    height: 25vh;
+    width: 35vh;
+    border-radius: 10px;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+}
+
+#text-box{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 90%;
+    height: 30%;
+    margin: 10px;
+}
+
+#button-box{
+    display: flex; /* Use flexbox to align divs side by side */
+    flex-wrap: wrap; /* Wrap to the next line if the screen is too narrow */
+  
+}
+
+.text-box{
+    height: 100%;
+    font-size: 100%;
+    font-family: monospace;
+    border-style: solid;
+    border-width: 2px;
+}
+
+
+.room-button{
+    height: 30px;
+    border-radius: 5px;
+}
+
+
+
+/* ----------------------------------------------------------------------------- */
+
+
+
+
+body {
+    background-color: rgb(231, 231, 213);
+    
+    display: flex;
+    justify-content: center;
+    height: 100vh;
+    align-items: center;
+    flex-direction: column;
+    margin: 0; /* Remove default margin */
+}
+
+.square {
+    height: 70px;
+    width: 70px;
+    position: relative;
+}
+
+
+img {
+    height: 62px;
+    margin: 4px;
+    justify-content: center;
+    align-items: center;
+
+    position: relative;
+    z-index: -9;
+}
+
+.piece {
+    position: relative;
+    z-index: 9;
+    transition: transform 0.3s ease;
+    cursor: pointer;
+}
+.piece:hover{
+    transform: scale(1.15);
+    z-index: 10
+}
+
+
+
+.white {
+    background-color: #F5F5F5;
+}
+
+.green {
+    background-color: #035A03;
+}
+
+p {
+    font-family: monospace;
+    font-size: 25px;
+    
+}
+
+span {
+    font-weight: 1000;
+}
+
+
+.move-animation {
+    transition: left 0.5s ease, top 0.5s ease; /* You can adjust the duration and easing function */
+}
+
+#notif{
+    margin: 10px;
+    color: #9C090C;
+}
+
+.square.yellow{
+    background-color: rgba(227, 227, 27, 0.673);
+}
+
+.square.red{
+    background-color: #a01215d4;
+}
+
+.king-image {
+    position: absolute;
+    left: -10px;
+    top: -22px;
+    height: 40px;
+    transform: rotate(-10deg);
+}
+
+/* ------------------operands---------------- */
+
+.square.multiply {
+    background-image: url('assets/operands/multiplication.png'); /* Example background image for the multiply operator */
+    background-size: 70px;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.square.divide {
+    background-image: url('assets/operands/division.png'); /* Example background image for the divide operator */
+    background-size: 65px;
+    background-repeat: no-repeat; 
+    background-position: center;
+}
+
+.square.subtract {
+    background-image: url('assets/operands/subtraction.png'); /* Example background image for the subtract operator */
+    background-size: 60px;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.square.add {
+    background-image: url('assets/operands/addition.png'); /* Example background image for the add operator */
+    background-size: 60px;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+
+.y-coordinates{
+    margin-top: 10px;
+    margin-right: 10px;
+    font-family: monospace;
+    font-size: 25px;
+    font-weight: bolder;
+    color: rgb(84, 86, 82);
+}
+
+.coordinates-height{
+    height: 70px;
+    display: flex;
+    align-items: center;
+}
+
+.x-coordinates{
+    display: flex;
+    flex-wrap: wrap;
+
+    margin-left: 30px;
+    font-family: monospace;
+    font-size: 25px;
+    font-weight: bolder;
+    color: rgb(84, 86, 82);
+}
+
+.coordinates-width{
+    width: 70px;
+    display: flex;
+    justify-content: center;
+}
+
+
+/* game time */
+
+.game-time{
+    display: flex;
+
+    font-family: monospace;
+    font-size: 35px;
+}
+
+
+.bottom-div{
+    display: flex;
+    justify-content: center;
+    margin-top: 50px;
+}
+
+#round-time{
+    color: #9C090C;
+}
+
+/* ------------modal to boi-------------- */
+
+.modal-red-wins {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(1.1);
+    transition: visibility 0s linear 0.25, opacity 0.25s, transform 0.25s;
+    z-index: 20;
+}
+
+.modal-blue-wins {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(1.1);
+    transition: visibility 0s linear 0.25, opacity 0.25s, transform 0.25s;
+    z-index: 20;
+}
+
+.modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    padding: 1rem 1.5rem;
+    width: 24rem;
+    border-radius: 0.5rem;
+}
+
+.modal-content h1 {
+    font-family: 'Comic Sans MS', cursive;
+}
+
+.modal-content img {
+    max-width: fit-content;
+    max-height: fit-content;
+}
+
+.show-modal {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1.0);
+    transition: visibility 0s linear 0s, opacity 0.25s 0s, transform 0.25s;
+}
+
+.rematch {
+    background-color: #F0F0F0;
+    border: none;
+    border-radius: 5px;
+    width: 100px;
+    padding: 14px;
+    font-size: 16px;
+    color: rgb(0, 0, 0);
+    box-shadow: 0px 6px 18px -5px rgb(161, 161, 161);
+    margin-left: 43%;
+    text-decoration: none;
+}
+
+.exit {
+    background-color: #F0F0F0;
+    border: none;
+    border-radius: 5px;
+    width: 100px;
+    padding: 14px;
+    font-size: 16px;
+    color: rgb(0, 0, 0);
+    box-shadow: 0px 6px 18px -5px rgb(161, 161, 161);
+    margin-left: 10px;
+    text-decoration: none;
+}
+
+.rematch:hover,
+.exit:hover {
+    background-color: #ccc;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.modal-content a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.modal-content p {
+    margin-bottom: 40px;
+    font-size: 18px;
+}

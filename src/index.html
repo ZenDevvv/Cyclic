@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scidama Online</title>
+    <link rel="stylesheet" href="styles.css">
+
+    <script defer src="http://localhost:8080/socket.io/socket.io.js"></script>
+    <script defer src="pieces.js"></script>
+    <script defer src="app.js"></script>
+
+</head>
+<body>
+
+    
+    <form id="room-form" autocomplete="off">
+        <h3>Scidama Online</h3>
+        <div id="text-box">
+            <input type="text" class="text-box" id="name-input" placeholder="Enter your name">
+            <input type="text" class="text-box" id="room-input" placeholder="Enter room ID">
+        </div>
+        <div id="button-box">
+            <button type="submit" class="room-button" id="create-button">Create room</button>
+            <button type="submit" class="room-button" id="find-button">Join room</button>
+        </div>
+        <div id="notif"></div>
+    </form>
+    
+    
+
+    <div id="game-container">
+
+        <div id="top-info">
+            <p>It is <span id="player"></span>'s turn.</p>
+            <p id="opponent">Waiting for players...</p>
+        </div>
+        <div id="body-content">
+            <div class="y-coordinates">
+                <!-- <div class="coordinates-height">7</div>
+                <div class="coordinates-height">6</div>
+                <div class="coordinates-height">5</div>
+                <div class="coordinates-height">4</div>
+                <div class="coordinates-height">3</div>
+                <div class="coordinates-height">2</div>
+                <div class="coordinates-height">1</div>
+                <div class="coordinates-height">0</div> -->
+            </div>
+
+
+            <div id="gameboard"></div>
+            <div id="score-board">
+                <div id="player-score">
+                    <div id="blue-score-board"><span class="blue-score score">0</span></div>
+                    <div id="red-score-board"><span class="red-score score">0</span></div>
+                </div>
+                <div id="move-history">
+                    <div id="move-history-content">
+                        <div style="width: 100%; background-color: #888383;;">-------------History-------------</div>
+                        <!-- Your move history text goes here -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="x-coordinates">
+            <!-- <div class="coordinates-width">0</div>
+            <div class="coordinates-width">1</div>
+            <div class="coordinates-width">2</div>
+            <div class="coordinates-width">3</div>
+            <div class="coordinates-width">4</div>
+            <div class="coordinates-width">5</div>
+            <div class="coordinates-width">6</div>
+            <div class="coordinates-width">7</div> -->
+        </div>
+
+        <div class="bottom-div">
+            <div class="game-time">
+                <div id="session-time">20:00</div>
+                <div>|</div>
+                <div id="round-time">:60</div>
+            </div>
+
+            <div>
+                <p id="info-display"></p>
+            </div>
+        </div>
+    </div>
+
+    <!--Winning Condition wahahahahaha-->
+    <div class="modal-red-wins">
+        <div class="modal-content">
+            <center><img src="../../assets/img/scidama.png" alt="ez"></center>
+            <center><h1>RED WINS!</h1></center>
+            <button class="rematch">Rematch</button>
+            <a href="../../index.html"><button class="exit">Exit</button></a>
+        </div>
+    </div>
+
+    <div class="modal-blue-wins">
+        <div class="modal-content">
+            <center><img src="../../assets/img/scidama.png" alt="ez"></center>
+            <center><h1>BLUE WINS!</h1></center>
+            <center><p></p></center>
+            <button class="rematch">Rematch</button>
+            <a href="../../index.html"><button class="exit">Exit</button></a>
+        </div>
+    </div>
+
+    
+    <audio id="move-attack001" autoplay="false" src="assets/sfx/move_attack001.mp3"></audio>
+
+   <audio id="move-attackcombo001" autoplay="false" src="assets/sfx/move_attackcombo001.mp3"></audio>
+
+    <audio id="move-king001" autoplay="false" src="assets/sfx/move_king001.mp3"></audio>
+    <audio id="move-kingattack001" autoplay="false" src="assets/sfx/move_kingattack001.mp3"></audio>
+
+    <audio id="move-illegal001" autoplay="false" src="assets/sfx/move_illegal001.mp3"></audio>
+    <audio id="move-promotion001" autoplay="false" src="assets/sfx/move_promotion001.mp3"></audio>
+    <!-- <audio id="endgame_lose001" autoplay="false" src="assets/sfx/endgame_lose001.mp3"></audio> -->
+    <audio id="endgame_win001" autoplay="false" src="assets/sfx/endgame_win001.mp3"></audio>
+</body>
+</html>
