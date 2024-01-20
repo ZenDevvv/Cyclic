@@ -13,8 +13,9 @@ const io = require('socket.io')(http, {
     },
 });
 
-const cors = require('cors');   // Import the cors middleware
-app.use(cors());        // Enable CORS for all routes
+app.use(express.static(path.join(__dirname, 'src')));
+//const cors = require('cors');   // Import the cors middleware
+//app.use(cors());        // Enable CORS for all routes
 
 //route
 app.get('/', (req, res) => {
