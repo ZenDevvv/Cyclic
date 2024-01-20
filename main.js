@@ -8,7 +8,7 @@ const http = require('http').Server(app)
 //attach http server to the socket.io
 const io = require('socket.io')(http, {
     cors: {
-        origin: "*",    //Replace with your client's origin  ex. "http://your-client-origin"
+        origin: "https://dashboard.render.com",    //Replace with your client's origin  ex. "http://your-client-origin"
         methods: ['GET', 'POST'],
     },
 });
