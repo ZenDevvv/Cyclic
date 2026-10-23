@@ -1,0 +1,62 @@
+/* Design tokens — the only colour, radius and spacing values components may use. See DESIGN.md §2. */
+:root {
+  color-scheme: dark;
+
+  --ground: #0e0d0c;
+  --surface: #181716;
+  --raised: #262422;
+  --active: #2f2c29;
+  --border: #24221f;
+  --rule: #1d1b19;
+  --control: #4a4743;
+
+  --text: #ffffff;
+  --muted: #b4b4b4;
+  --faint: #949494;
+
+  --accent: #f2b33d;
+  --accent-ink: #1a1306;
+
+  --red: #e5483f;
+  --red-chip: #c9372f;
+  --blue: #3d8de0;
+  --blue-chip: #2668b5;
+
+  --positive: #3fc07a;
+  --pill-positive-bg: #172a1d;
+  --negative: #e5566f;
+  --pill-negative-bg: #2c1a20;
+  --warning: #e5a93b;
+  --pill-warning-bg: #2b2414;
+  --pill-neutral-bg: #262422;
+
+  /* Board theme "felt" (default). Other themes override these on [data-board]. */
+  --sq-light: #e8e1cf;
+  --sq-dark: #1f4d36;
+  --sq-glyph: rgba(31, 77, 54, 0.5);
+  --sq-coord-light: #1f4d36;
+  --sq-coord-dark: #e8e1cf;
+
+  /* Chips */
+  --chip-face: #f6f1e4;
+  --chip-ink: #1c1a17;
+
+  --topbar: 48px;
+  --column: 1152px;
+}
+
+[data-board='slate'] {
+  --sq-light: #d9dadc;
+  --sq-dark: #3a3d42;
+  --sq-glyph: rgba(58, 61, 66, 0.45);
+  --sq-coord-light: #3a3d42;
+  --sq-coord-dark: #d9dadc;
+}
+
+[data-board='paper'] {
+  --sq-light: #f5f5f5;
+  --sq-dark: #035a03;
+  --sq-glyph: rgba(0, 0, 0, 0.55);
+  --sq-coord-light: #035a03;
+  --sq-coord-dark: #f5f5f5;
+}
