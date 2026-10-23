@@ -1,18 +1,46 @@
 {
-  "name": "socket",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "start": "node main.js"
+  "name": "scidama",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Scidama Online: real-time two-player math checkers with ₱/kWh scoring, rooms, matchmaking and ratings.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "dev": "concurrently -n server,client -c yellow,cyan \"node --watch server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "prestart": "node scripts/ensure-build.ts",
+    "start": "node server/index.ts",
+    "test": "node --test --test-concurrency=1 \"shared/**/*.test.ts\" \"server/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p .",
+    "e2e": "node e2e/play.e2e.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "seed": "node scripts/seed-demo.ts"
+  },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "nodemon": "^3.0.2",
-    "socket.io": "^4.7.4"
+    "express": "5.2.1",
+    "socket.io": "4.8.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "concurrently": "10.0.6",
+    "playwright-core": "1.64.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router": "7.18.4",
+    "socket.io-client": "4.8.4",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "zustand": "5.0.15"
   }
 }

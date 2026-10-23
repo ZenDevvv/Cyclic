@@ -1,0 +1,9 @@
+node_modules/
+client/dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+.taste-skill/
+.env
+e2e/artifacts/
