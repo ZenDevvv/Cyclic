@@ -1,13 +1,17 @@
-// Quick match: one queue per time-control preset, paired by closest rating with a widening window.
+// Quick match: one queue per grade and time control, paired by closest rating with a widening window.
+import { GRADE_IDS, type Grade } from '../shared/engine.ts';
 import { PRESET_IDS, type PresetId } from '../shared/presets.ts';
-import type { UserSummary } from '../shared/protocol.ts';
+import type { QueueCounts, QueueState, UserSummary } from '../shared/protocol.ts';
 import { RoomError, type IO, type IOSocket, type RoomManager } from './rooms.ts';
 
 interface Entry {
   user: UserSummary;
   preset: PresetId;
+  grade: Grade;
   since: number;
 }
+
+const NOT_QUEUED: QueueState = { preset: null, grade: null, since: null, waiting: 0 };
 
 export interface MatchmakerOptions {
   /** Rating window starts at `baseWindow` and widens by `widenBy` every `widenEveryMs`. */
@@ -42,28 +46,29 @@ export class Matchmaker {
     clearInterval(this.timer);
   }
 
-  counts(): Record<PresetId, number> {
-    const out = Object.fromEntries(PRESET_IDS.map((p) => [p, 0])) as Record<PresetId, number>;
-    for (const e of this.entries.values()) out[e.preset]++;
+  counts(): QueueCounts {
+    const out = Object.fromEntries(GRADE_IDS.map((g) => [g, Object.fromEntries(PRESET_IDS.map((p) => [p, 0]))])) as QueueCounts;
+    for (const e of this.entries.values()) out[e.grade][e.preset]++;
     return out;
   }
 
-  join(socket: IOSocket, preset: PresetId): void {
+  join(socket: IOSocket, preset: PresetId, grade: Grade): void {
     const user = socket.data.user;
     const seat = this.rooms.activeSeat(user.id);
     if (seat?.room.phase === 'playing') {
       throw new RoomError('already_seated', 'You are in a game right now.', seat.room.code);
     }
     const existing = this.entries.get(user.id);
-    this.entries.set(user.id, { user, preset, since: existing?.preset === preset ? existing.since : this.now() });
-    this.match(preset);
+    const same = existing?.preset === preset && existing.grade === grade;
+    this.entries.set(user.id, { user, preset, grade, since: same ? existing.since : this.now() });
+    this.match(preset, grade);
     this.emitAll();
     this.rooms.scheduleLobby();
   }
 
   leave(userId: string): void {
     if (!this.entries.delete(userId)) return;
-    this.io.to(`user:${userId}`).emit('queue:state', { preset: null, since: null, waiting: 0 });
+    this.io.to(`user:${userId}`).emit('queue:state', NOT_QUEUED);
     this.emitAll();
     this.rooms.scheduleLobby();
   }
@@ -85,8 +90,8 @@ export class Matchmaker {
     return this.baseWindow + this.widenBy * Math.floor((this.now() - e.since) / this.widenEveryMs);
   }
 
-  private match(preset: PresetId): void {
-    const waiting = [...this.entries.values()].filter((e) => e.preset === preset).sort((a, b) => a.since - b.since);
+  private match(preset: PresetId, grade: Grade): void {
+    const waiting = [...this.entries.values()].filter((e) => e.preset === preset && e.grade === grade).sort((a, b) => a.since - b.since);
     const taken = new Set<string>();
     for (const a of waiting) {
       if (taken.has(a.user.id)) continue;
@@ -103,9 +108,9 @@ export class Matchmaker {
       this.entries.delete(a.user.id);
       this.entries.delete(best.user.id);
       try {
-        const room = this.rooms.createQuick(a.user, best.user, preset);
+        const room = this.rooms.createQuick(a.user, best.user, preset, grade);
         for (const u of [a.user, best.user]) {
-          this.io.to(`user:${u.id}`).emit('queue:state', { preset: null, since: null, waiting: 0 });
+          this.io.to(`user:${u.id}`).emit('queue:state', NOT_QUEUED);
           this.io.to(`user:${u.id}`).emit('queue:matched', { code: room.code });
         }
       } catch (err) {
@@ -118,12 +123,12 @@ export class Matchmaker {
 
   private tick(): void {
     if (!this.entries.size) return;
-    for (const p of PRESET_IDS) this.match(p);
+    for (const g of GRADE_IDS) for (const p of PRESET_IDS) this.match(p, g);
     this.emitAll();
   }
 
-  private stateFor(e: Entry) {
-    return { preset: e.preset, since: e.since, waiting: this.counts()[e.preset] };
+  private stateFor(e: Entry): QueueState {
+    return { preset: e.preset, grade: e.grade, since: e.since, waiting: this.counts()[e.grade][e.preset] };
   }
 
   private emitAll(): void {

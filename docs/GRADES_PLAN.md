@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 to 4 built on 2026-11-07; Phases 5–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 to 5 built on 2026-11-07; Phases 6–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -156,7 +156,7 @@ the bot preferred a bigger lead to winning. Results over 24 games per pairing:
 Skill decides Grade 8, but one term is nearly the whole losing score. Easy plays about even with a random player
 in every grade, which suits a beginner but may be weaker than the name suggests.
 
-### Phase 5: server and protocol (medium)
+### Phase 5: server and protocol (medium) — built
 
 - `shared/presets.ts`: `RoomSettings.grade`, default 7. `shared/protocol.ts` and the zod `settingsSchema` first,
   as hard rules 4 and 5 require.
@@ -165,8 +165,10 @@ in every grade, which suits a beginner but may be weaker than the name suggests.
   a validated `grade`.
 - `server/db.ts`: new migration adding `games.grade INTEGER NOT NULL DEFAULT 7`, for filters and game rows.
   Keep `settings_json` as the source for replays; a missing grade means 7.
-- `red_score` and `blue_score` must hold decimals and very large numbers. SQLite's column type allows it, but
-  add a test that saves and reads back a Grade 8 score.
+- `red_score` and `blue_score` became `REAL` in the same migration. SQLite stores any size in an `INTEGER` column, but
+  `node:sqlite` refuses to read back a whole number past 2⁵³, so one Grade 8 game would have broken every list
+  that reads it. A test saves and reads every size, and another upgrades a real old-format database.
+- `queue:join` without a grade means Grade 7, so a client from before a deploy still works.
 - `server/server.test.ts`: a room plays and saves a non-default grade, and quick match never pairs two grades.
 
 ### Phase 6: client (large)

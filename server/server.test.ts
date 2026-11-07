@@ -2,8 +2,14 @@ import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { io as connectClient, type Socket } from 'socket.io-client';
 import { createServer } from './app.ts';
+import { MIGRATIONS, openRepo, type SaveGameInput } from './db.ts';
 import { parseTrustProxy } from './config.ts';
-import { applyStep, forcedStep, initialState, legalSteps, replay, sq, type GameState } from '../shared/engine.ts';
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { applyStep, forcedStep, GRADE_IDS, GRADES, initialState, legalSteps, replay, sq, type GameState, type Grade } from '../shared/engine.ts';
+import { decodeBoard } from '../shared/codec.ts';
 import { AUTO_CAPTURE_MS } from '../shared/presets.ts';
 import type {
   AckResult,
@@ -12,6 +18,7 @@ import type {
   GameDetail,
   LobbyState,
   PlayerProfile,
+  QueueState,
   RoomSnapshot,
   ServerToClientEvents,
   SessionResponse,
@@ -548,6 +555,77 @@ test('an auto-capture does not decline a draw offer the player has not seen', as
   });
 });
 
+test('quick match pairs players of the same grade, and the game is that grade', async () => {
+  const a = await player();
+  const b = await player();
+  assert.deepEqual(await emit(a, 'queue:join', { preset: 'blitz', grade: 10 }), { ok: true });
+  assert.deepEqual(await emit(b, 'queue:join', { preset: 'blitz', grade: 10 }), { ok: true });
+  await until(() => a.room?.phase === 'playing' && b.room?.phase === 'playing', 3000, 'match');
+  assert.equal(a.room?.settings.grade, 10);
+  assert.equal(stateOf(a).rules.grade, 10);
+  assert.equal(a.room?.settings.rated, true);
+  assert.deepEqual(await emit(a, 'game:resign'), { ok: true });
+});
+
+test('quick match keeps trying in every grade as the rating window widens', async () => {
+  const strong = await guest();
+  const weak = await guest();
+  const red = { id: strong.me.id, name: strong.me.name, rating: 1200 };
+  const blue = { id: weak.me.id, name: weak.me.name, rating: 1200 };
+  const ratingChange = { red: { before: 1200, after: 1600 }, blue: { before: 1200, after: 1200 } };
+  server.repo.saveGame({ ...savedGame({ red: 0, blue: 0 }, 7), rated: true, red, blue, ratingChange });
+  const a = await player({ token: strong.token, id: strong.me.id, name: strong.me.name });
+  const b = await player({ token: weak.token, id: weak.me.id, name: weak.me.name });
+  await emit(a, 'queue:join', { preset: 'long', grade: 9 });
+  await emit(b, 'queue:join', { preset: 'long', grade: 9 });
+  const atFirst = a.room;
+  assert.equal(atFirst, null, '400 points apart is too far at first');
+  await until(() => a.room?.phase === 'playing', 3000, 'the periodic retry to pair them');
+  assert.equal(a.room?.settings.grade, 9);
+  assert.deepEqual(await emit(a, 'game:resign'), { ok: true });
+});
+
+test('quick match never pairs two grades, however long they wait', async () => {
+  const a = await player();
+  const b = await player();
+  let aState: QueueState | null = null;
+  a.socket.on('queue:state', (q) => {
+    aState = q;
+  });
+  await emit(a, 'queue:join', { preset: 'long', grade: 8 });
+  await emit(b, 'queue:join', { preset: 'long', grade: 9 });
+  await until(() => (aState as QueueState | null)?.grade === 8, 3000, 'queue state');
+  assert.equal((aState as unknown as QueueState).waiting, 1, 'counts only its own grade');
+  await new Promise((r) => setTimeout(r, 1300)); // past a matching tick, with the rating window widened
+  assert.equal(a.room, null);
+  assert.equal(b.room, null);
+  const counts = server.queue.counts();
+  assert.equal(counts[8].long, 1);
+  assert.equal(counts[9].long, 1);
+  assert.equal(counts[7].long, 0);
+  await emit(a, 'queue:leave');
+  await emit(b, 'queue:leave');
+});
+
+test('quick match without a grade means Grade 7, and changing grade restarts the wait', async () => {
+  const a = await player();
+  const states: QueueState[] = [];
+  a.socket.on('queue:state', (q) => states.push(q));
+  await emit(a, 'queue:join', { preset: 'standard' });
+  await until(() => states.length > 0, 3000, 'queue state');
+  assert.equal(states.at(-1)?.grade, 7);
+  const first = states.at(-1)!.since!;
+  await new Promise((r) => setTimeout(r, 15));
+  await emit(a, 'queue:join', { preset: 'standard' });
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(states.at(-1)?.since, first, 'joining the same queue keeps your place');
+  await emit(a, 'queue:join', { preset: 'standard', grade: 9 });
+  await until(() => states.at(-1)?.grade === 9, 3000, 'the new queue');
+  assert.ok(states.at(-1)!.since! > first, 'a different queue starts again');
+  await emit(a, 'queue:leave');
+  await until(() => states.at(-1)?.grade === null, 3000, 'leaving');
+});
+
 test('quick-match rooms use auto-capture and the most-chips rule', async () => {
   const a = await player();
   const b = await player();
@@ -557,6 +635,185 @@ test('quick-match rooms use auto-capture and the most-chips rule', async () => {
   assert.equal(a.room?.settings.autoCapture, true);
   assert.equal(stateOf(a).rules.maxCapture, true);
   assert.deepEqual(await emit(a, 'game:resign'), { ok: true });
+});
+
+// ------------------------------------------------------------------ grades
+
+const fourMoves = [
+  { from: sq(5, 2), to: sq(4, 3) },
+  { from: sq(2, 5), to: sq(3, 4) },
+  { from: sq(4, 3), to: sq(2, 5) },
+  { from: sq(1, 6), to: sq(3, 4) },
+];
+
+async function playMoves(host: Player, g: Player, moves: typeof fourMoves) {
+  for (const move of moves) {
+    const s = stateOf(host);
+    assert.deepEqual(await emit(s.turn === 'red' ? host : g, 'game:step', move), { ok: true });
+    await until(() => stateOf(host).stepCount === s.stepCount + 1 && stateOf(g).stepCount === s.stepCount + 1, 3000, 'the move');
+  }
+}
+
+test('rooms default to Grade 7, and the host chooses the grade before the game', async () => {
+  const { host, guest: g } = await pair({ gameMinutes: 0, moveSeconds: 0 });
+  assert.equal(host.room?.settings.grade, 7);
+  assert.deepEqual(await emit(host, 'room:settings', { settings: { grade: 9 } }), { ok: true });
+  await until(() => g.room?.settings.grade === 9, 3000, 'the guest to see it');
+  assert.equal((await emit(g, 'room:settings', { settings: { grade: 8 } })).ok, false, 'only the host');
+  assert.deepEqual(await emit(host, 'room:start'), { ok: true });
+  await until(() => host.room?.phase === 'playing', 3000, 'game start');
+  assert.equal(stateOf(host).rules.grade, 9);
+  assert.equal((await emit(host, 'room:settings', { settings: { grade: 10 } })).ok, false, 'fixed once the game starts');
+});
+
+test('a grade that does not exist is rejected, not crashed on', async () => {
+  const host = await player();
+  for (const grade of [6, 11, 7.5, '7', null, { grade: 7 }]) {
+    const res = await emit(host, 'room:create', { visibility: 'private', settings: { grade } });
+    assert.equal(res.ok, false, JSON.stringify(grade));
+  }
+  for (const grade of [6, '9']) assert.equal((await emit(host, 'queue:join', { preset: 'blitz', grade })).ok, false, JSON.stringify(grade));
+});
+
+test('each grade starts with its own chips and scores on the server', async () => {
+  const expected: Record<Grade, { columns: object; scores: { red: number; blue: number } }> = {
+    7: { columns: { red: { P: 4 }, blue: { P: 6 } }, scores: { red: 4, blue: 6 } },
+    8: { columns: { red: { sci: 440 }, blue: { sci: 8.8e8 - 2.2e2 } }, scores: { red: 440, blue: 8.8e8 - 2.2e2 } },
+    9: { columns: { red: { F: 88 }, blue: { F: 81 } }, scores: { red: 88, blue: 81 } },
+    10: { columns: { red: { C: 4 }, blue: { C: 21 } }, scores: { red: 0, blue: 0 } },
+  };
+  for (const grade of GRADE_IDS) {
+    const { host, guest: g } = await started({ ...noClock, grade });
+    const { chips } = GRADES[grade];
+    const onBoard = stateOf(host).board.filter((p) => p?.side === 'red').map((p) => `${p!.unit}${p!.value}`).sort();
+    assert.deepEqual(onBoard, chips.map((c) => `${c.unit}${c.value}`).sort(), `grade ${grade}`);
+    await playMoves(host, g, fourMoves);
+    assert.deepEqual(stateOf(host).columns, expected[grade].columns, `grade ${grade}`);
+    assert.deepEqual(stateOf(host).scores, expected[grade].scores, `grade ${grade}`);
+    assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+  }
+});
+
+test('a finished game in any grade is saved with its grade and replays', async () => {
+  for (const grade of GRADE_IDS) {
+    const { host, guest: g } = await started({ ...noClock, grade });
+    await playMoves(host, g, fourMoves);
+    assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+    await until(() => !!host.room?.game?.savedId, 3000, 'saved id');
+    const id = host.room!.game!.savedId!;
+    const saved = (await api<GameDetail>(`/games/${id}`)).body;
+    assert.equal(saved.grade, grade);
+    assert.equal(saved.settings.grade, grade);
+    assert.deepEqual(replay(saved.steps, { grade: saved.settings.grade, maxCapture: saved.settings.maxCapture }).state.board, stateOf(host).board);
+    const profile = await api<PlayerProfile>(`/players/${host.id}`);
+    assert.equal(profile.body.recent[0].grade, grade);
+    const latest = await api<{ id: string; grade: Grade }[]>('/games?limit=5');
+    assert.equal(latest.body.find((x) => x.id === id)?.grade, grade);
+  }
+});
+
+test('a rematch keeps the grade', async () => {
+  const { host, guest: g } = await started({ ...noClock, grade: 10 });
+  assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+  await until(() => host.room?.phase === 'ended', 3000, 'game end');
+  await emit(host, 'game:rematch', { want: true });
+  await emit(g, 'game:rematch', { want: true });
+  await until(() => host.room?.phase === 'playing', 3000, 'rematch');
+  assert.equal(stateOf(host).rules.grade, 10);
+  assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+});
+
+test('the lobby shows a live game in its own grade', async () => {
+  const watcher = await player();
+  let lobby: LobbyState | null = null;
+  watcher.socket.on('lobby:state', (l) => {
+    lobby = l;
+  });
+  watcher.socket.emit('lobby:subscribe');
+  const { host } = await pair({ ...noClock, grade: 8 }, 'public');
+  assert.deepEqual(await emit(host, 'room:start'), { ok: true });
+  await until(() => host.room?.phase === 'playing', 3000, 'game start');
+  await until(() => !!(lobby as LobbyState | null)?.live.some((x) => x.code === host.room?.code), 3000, 'the live game');
+  const live = (lobby as unknown as LobbyState).live.find((x) => x.code === host.room?.code)!;
+  assert.equal(live.settings.grade, 8);
+  assert.deepEqual(decodeBoard(live.board, 8), stateOf(host).board, 'the thumbnail is not blank');
+  assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+});
+
+test('rated games move ratings in any grade', async () => {
+  const { host, guest: g } = await started({ ...noClock, grade: 9, rated: true });
+  await playMoves(host, g, fourMoves.slice(0, 3));
+  assert.deepEqual(await emit(g, 'game:resign'), { ok: true });
+  await until(() => !!host.room?.game?.ratingChange, 3000, 'rating change');
+  const { red, blue } = host.room!.game!.ratingChange!;
+  assert.ok(red.after > red.before);
+  assert.ok(blue.after < blue.before);
+});
+
+// ------------------------------------------------------------------ saving scores
+
+const savedGame = (scores: { red: number; blue: number }, grade: Grade = 8): SaveGameInput => {
+  const you = { id: 'nobody', name: 'Nobody', rating: 1200 };
+  return {
+    roomCode: 'TEST',
+    mode: 'custom',
+    rated: false,
+    red: you,
+    blue: you,
+    ratingChange: null,
+    settings: { grade, gameMinutes: 0, moveSeconds: 0, rated: false, hostSide: 'red', allowSpectators: true, maxCapture: true, autoCapture: true },
+    steps: [],
+    scores,
+    winner: 'red',
+    reason: 'time',
+    startedAt: 1,
+    endedAt: 2,
+  };
+};
+
+test('every size of score saves and reads back exactly', () => {
+  const repo = openRepo(':memory:');
+  // The two middle values are past 2^53: an INTEGER column stores them but cannot read them back.
+  for (const score of [0, 220.11, 1.212e12, 2 ** 53, 3.2e17, 9.1e18, 2.94e24, 1.111e-11]) {
+    const id = repo.saveGame(savedGame({ red: score, blue: score * 2 }));
+    assert.deepEqual(repo.getGame(id)?.scores, { red: score, blue: score * 2 }, String(score));
+  }
+  assert.equal(repo.latestGames(50).length, 8, 'the lists that read every row still work');
+  repo.close();
+});
+
+test('a database from before grades upgrades and keeps its games', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scidama-migrate-'));
+  const file = path.join(dir, 'old.db');
+  try {
+    const old = new DatabaseSync(file);
+    old.exec(MIGRATIONS[0]);
+    old.exec('PRAGMA user_version = 1');
+    old.exec(`INSERT INTO games (id, room_code, mode, rated, red_id, blue_id, red_name, blue_name, red_rating_before, blue_rating_before,
+      settings_json, steps_json, step_count, red_score, blue_score, winner, reason, started_at, ended_at)
+      VALUES ('g1', 'ROOM', 'custom', 0, 'a', 'b', 'Ana', 'Ben', 1200, 1200,
+      '{"gameMinutes":20,"moveSeconds":60,"rated":false,"hostSide":"red","allowSpectators":true,"maxCapture":false}',
+      '[[21,28]]', 1, 12, 34, 'red', 'time', 1, 2)`);
+    old.close();
+
+    const repo = openRepo(file);
+    const game = repo.getGame('g1')!;
+    assert.deepEqual(game.scores, { red: 12, blue: 34 });
+    assert.equal(game.grade, 7);
+    assert.equal(game.settings.grade, 7, 'a missing grade reads as 7');
+    assert.equal(game.settings.maxCapture, false, 'the rest of the settings survive');
+    assert.equal(game.steps.length, 1);
+    const id = repo.saveGame(savedGame({ red: 3.2e17, blue: 0 }, 9));
+    assert.equal(repo.getGame(id)?.grade, 9);
+    assert.equal(repo.getGame(id)?.scores.red, 3.2e17);
+    repo.close();
+
+    const again = openRepo(file);
+    assert.equal(again.getGame('g1')?.scores.blue, 34, 'opening it twice changes nothing');
+    again.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // ------------------------------------------------------------------ matchmaking

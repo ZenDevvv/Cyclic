@@ -1,6 +1,6 @@
 // The contract between server and client: REST payloads, socket events and room snapshots.
 // Change an event here first; both sides import these types.
-import type { EndReason, GameState, Side, Step, StepRecord } from './engine.ts';
+import type { EndReason, GameState, Grade, Side, Step, StepRecord } from './engine.ts';
 import type { PresetId, RoomSettings } from './presets.ts';
 
 // ---------------------------------------------------------------- people
@@ -146,11 +146,15 @@ export interface LobbyState {
   live: LiveGame[];
   online: number;
   playing: number;
-  queue: Record<PresetId, number>;
+  /** Players waiting in each queue: one per grade and time control. */
+  queue: QueueCounts;
 }
+
+export type QueueCounts = Record<Grade, Record<PresetId, number>>;
 
 export interface QueueState {
   preset: PresetId | null;
+  grade: Grade | null;
   since: number | null;
   waiting: number;
 }
@@ -177,7 +181,7 @@ export interface ClientToServerEvents {
   'game:draw-answer': (input: { accept: boolean }, ack: Ack) => void;
   'game:rematch': (input: { want: boolean }, ack: Ack) => void;
   'chat:send': (input: { text: string }, ack: Ack) => void;
-  'queue:join': (input: { preset: PresetId }, ack: Ack) => void;
+  'queue:join': (input: { preset: PresetId; grade?: Grade }, ack: Ack) => void;
   'queue:leave': (ack: Ack) => void;
 }
 
@@ -204,6 +208,7 @@ export interface GameSummary {
   id: string;
   roomCode: string;
   mode: RoomMode;
+  grade: Grade;
   rated: boolean;
   red: UserSummary;
   blue: UserSummary;
@@ -217,6 +222,7 @@ export interface GameSummary {
 }
 
 export interface GameDetail extends GameSummary {
+  /** A game saved before grades existed reads as Grade 7. */
   settings: RoomSettings;
   steps: Step[];
 }

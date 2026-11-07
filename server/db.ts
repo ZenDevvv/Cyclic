@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { EndReason, Side, Step } from '../shared/engine.ts';
+import type { EndReason, Grade, Side, Step } from '../shared/engine.ts';
 import type { RoomSettings } from '../shared/presets.ts';
 import type {
   GameDetail,
@@ -19,7 +19,7 @@ import type {
 import { START_RATING } from '../shared/rating.ts';
 
 /** Append-only. Never edit a migration that has shipped; add a new entry. */
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE users (
     id TEXT PRIMARY KEY,
@@ -68,6 +68,17 @@ const MIGRATIONS: string[] = [
   CREATE INDEX games_blue ON games(blue_id, ended_at);
   CREATE INDEX games_ended ON games(ended_at);
   `,
+  // Grades. Scores become REAL: Grade 8's run past 2^53, and node:sqlite refuses to read an INTEGER that large.
+  `
+  ALTER TABLE games ADD COLUMN grade INTEGER NOT NULL DEFAULT 7;
+  ALTER TABLE games RENAME COLUMN red_score TO red_score_int;
+  ALTER TABLE games RENAME COLUMN blue_score TO blue_score_int;
+  ALTER TABLE games ADD COLUMN red_score REAL NOT NULL DEFAULT 0;
+  ALTER TABLE games ADD COLUMN blue_score REAL NOT NULL DEFAULT 0;
+  UPDATE games SET red_score = red_score_int, blue_score = blue_score_int;
+  ALTER TABLE games DROP COLUMN red_score_int;
+  ALTER TABLE games DROP COLUMN blue_score_int;
+  `,
 ];
 
 export const randomId = (len = 10): string => {
@@ -96,6 +107,7 @@ interface GameRow {
   id: string;
   room_code: string;
   mode: string;
+  grade: number;
   rated: number;
   red_id: string;
   blue_id: string;
@@ -163,6 +175,7 @@ function toGameSummary(r: GameRow): GameSummary {
     id: r.id,
     roomCode: r.room_code,
     mode: r.mode as RoomMode,
+    grade: r.grade as Grade,
     rated: r.rated === 1,
     red: { id: r.red_id, name: r.red_name, rating: r.red_rating_before },
     blue: { id: r.blue_id, name: r.blue_name, rating: r.blue_rating_before },
@@ -240,10 +253,10 @@ export function openRepo(dbPath: string) {
     applyResult: db.prepare(
       'UPDATE users SET rating = ?, games = games + 1, rated_games = rated_games + ?, wins = wins + ?, losses = losses + ?, draws = draws + ? WHERE id = ?',
     ),
-    insertGame: db.prepare(`INSERT INTO games (id, room_code, mode, rated, red_id, blue_id, red_name, blue_name,
+    insertGame: db.prepare(`INSERT INTO games (id, room_code, mode, grade, rated, red_id, blue_id, red_name, blue_name,
       red_rating_before, blue_rating_before, red_rating_after, blue_rating_after, settings_json, steps_json, step_count,
       red_score, blue_score, winner, reason, started_at, ended_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     gameById: db.prepare('SELECT * FROM games WHERE id = ?'),
     recentForUser: db.prepare(
       'SELECT * FROM games WHERE red_id = ? OR blue_id = ? ORDER BY ended_at DESC LIMIT ?',
@@ -319,6 +332,7 @@ export function openRepo(dbPath: string) {
           id,
           input.roomCode,
           input.mode,
+          input.settings.grade,
           input.rated ? 1 : 0,
           input.red.id,
           input.blue.id,
@@ -356,7 +370,8 @@ export function openRepo(dbPath: string) {
       const r = q.gameById.get(id) as GameRow | undefined;
       if (!r) return null;
       const steps = (JSON.parse(r.steps_json) as [number, number][]).map(([from, to]) => ({ from, to }));
-      return { ...toGameSummary(r), settings: JSON.parse(r.settings_json) as RoomSettings, steps };
+      const settings = { grade: r.grade as Grade, ...(JSON.parse(r.settings_json) as Omit<RoomSettings, 'grade'>) };
+      return { ...toGameSummary(r), settings, steps };
     },
 
     recentGames(userId: string, limit = 20): GameSummary[] {

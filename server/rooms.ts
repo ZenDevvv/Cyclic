@@ -10,6 +10,7 @@ import {
   other,
   type EndReason,
   type GameState,
+  type Grade,
   type Side,
   type Step,
   type StepRecord,
@@ -33,6 +34,7 @@ import type {
   LiveGame,
   LobbyState,
   OpenRoom,
+  QueueCounts,
   RatingChange,
   RoomMode,
   RoomPhase,
@@ -177,7 +179,7 @@ export class RoomManager {
     return { online: online.size, playing };
   }
 
-  lobbyState(queue: Record<PresetId, number>): LobbyState {
+  lobbyState(queue: QueueCounts): LobbyState {
     const open: OpenRoom[] = [];
     const live: LiveGame[] = [];
     for (const room of this.rooms.values()) {
@@ -203,7 +205,7 @@ export class RoomManager {
           settings: room.settings,
           scores: room.game.state.scores,
           turn: room.game.state.turn,
-          board: encodeBoard(room.game.state.board),
+          board: encodeBoard(room.game.state.board, room.settings.grade),
           spectators: room.watchers.size,
           startedAt: room.game.startedAt,
         });
@@ -344,10 +346,11 @@ export class RoomManager {
   }
 
   /** Matchmaking: a rated public room that starts at once. */
-  createQuick(a: UserSummary, b: UserSummary, preset: PresetId): Room {
+  createQuick(a: UserSummary, b: UserSummary, preset: PresetId, grade: Grade): Room {
     const p = PRESETS[preset];
     const settings: RoomSettings = {
       ...DEFAULT_ROOM_SETTINGS,
+      grade,
       gameMinutes: p.gameMinutes,
       moveSeconds: p.moveSeconds,
       rated: true,
@@ -486,7 +489,7 @@ export class RoomManager {
     room.phase = 'playing';
     room.endedAt = null;
     room.game = {
-      state: initialState({ maxCapture: room.settings.maxCapture }),
+      state: initialState({ grade: room.settings.grade, maxCapture: room.settings.maxCapture }),
       records: [],
       steps: [],
       startedAt: now,

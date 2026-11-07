@@ -129,6 +129,11 @@ Each item says what was decided, why, and where to change it. **Open questions**
 - **The bot compares score gaps by order of magnitude,** because they run from ₱1 to 10²⁴ across the grades. The
   order of positions does not change, and a won game always outranks a lead. Results are in `GRADES_PLAN.md`.
 
+- **One queue per grade and time control,** because two grades cannot share a game. With few players this can mean
+  a long wait; the owner accepted that. To offer fewer: limit the grades passed to `queue:join`.
+- **One rating across all grades,** so a player's rating is not split while the player base is small. To separate
+  them: add a rating per grade, and pair on it in `server/matchmaking.ts`.
+
 ## Open questions for you
 
 1. **Negative scores:** keep "below zero scores nothing", or score negatives like integer Damath?

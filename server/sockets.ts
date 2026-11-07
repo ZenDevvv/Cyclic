@@ -5,11 +5,15 @@ import { toSummary, type Repo } from './db.ts';
 import { RateLimiter } from './limiter.ts';
 import { RoomError, toAckError, type IO, type IOSocket, type RoomManager } from './rooms.ts';
 import type { Matchmaker } from './matchmaking.ts';
+import { DEFAULT_RULES, GRADE_IDS, type Grade } from '../shared/engine.ts';
 import { GAME_MINUTES, MOVE_SECONDS, PRESET_IDS } from '../shared/presets.ts';
 import type { AckResult } from '../shared/protocol.ts';
 
+const grade = z.custom<Grade>((v) => GRADE_IDS.includes(v as Grade));
+
 const settingsSchema = z
   .object({
+    grade,
     gameMinutes: z.number().refine((n) => (GAME_MINUTES as readonly number[]).includes(n)),
     moveSeconds: z.number().refine((n) => (MOVE_SECONDS as readonly number[]).includes(n)),
     rated: z.boolean(),
@@ -32,7 +36,7 @@ const schemas = {
   drawAnswer: z.object({ accept: z.boolean() }),
   rematch: z.object({ want: z.boolean() }),
   chat: z.object({ text: z.string().min(1).max(400) }),
-  queue: z.object({ preset: z.enum(PRESET_IDS as [string, ...string[]]) }),
+  queue: z.object({ preset: z.enum(PRESET_IDS as [string, ...string[]]), grade: grade.default(DEFAULT_RULES.grade) }),
 };
 
 const invalid = (message = 'That request was not understood.'): AckResult => ({ ok: false, error: 'invalid', message });
@@ -105,7 +109,7 @@ export function attachSockets(io: IO, repo: Repo, rooms: RoomManager, queue: Mat
       if (!chats.take(socket.data.user.id)) throw new RoomError('rate_limited', 'You are sending messages too fast.');
       rooms.chat(socket, input.text);
     });
-    on('queue:join', schemas.queue, (input) => queue.join(socket, input.preset as never));
+    on('queue:join', schemas.queue, (input) => queue.join(socket, input.preset as never, input.grade));
     on('queue:leave', null, () => queue.leave(socket.data.user.id));
 
     socket.on('disconnect', () => {

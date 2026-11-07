@@ -4,7 +4,8 @@
 **Decision so far:** move to Neon's free Postgres when this is picked up. This is a demo project, so
 everything has to stay free.
 **Order:** do this after `GRADES_PLAN.md`. Scores will then be decimals or very large numbers, and `games` gains
-a `grade` column, so use `DOUBLE PRECISION` or `NUMERIC` for scores, not `INTEGER`.
+a `grade` column, so use `DOUBLE PRECISION` for scores, not `INTEGER`. Migration 2 in `server/db.ts` made the same
+change in SQLite; `GRADES_PLAN.md` Phase 5 says why.
 
 ## The problem
 

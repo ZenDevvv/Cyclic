@@ -47,7 +47,7 @@ export default function Replay() {
 function ReplayView({ game }: { game: GameDetail }) {
   // Every position of the game, computed once.
   const { states, records } = useMemo(() => {
-    let s = initialState({ maxCapture: game.settings.maxCapture });
+    let s = initialState({ grade: game.settings.grade, maxCapture: game.settings.maxCapture });
     const states: GameState[] = [s];
     const records: StepRecord[] = [];
     for (const step of game.steps) {

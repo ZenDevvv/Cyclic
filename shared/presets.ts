@@ -1,5 +1,5 @@
 // Time controls and room defaults shared by the lobby, the server and matchmaking.
-import type { Side } from './engine.ts';
+import type { Grade, Side } from './engine.ts';
 
 export type PresetId = 'blitz' | 'standard' | 'long';
 
@@ -26,6 +26,7 @@ export const MOVE_SECONDS = [0, 30, 60, 90] as const;
 export type HostSide = Side | 'random';
 
 export interface RoomSettings {
+  grade: Grade;
   gameMinutes: number;
   moveSeconds: number;
   rated: boolean;
@@ -37,6 +38,7 @@ export interface RoomSettings {
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  grade: 7,
   gameMinutes: 20,
   moveSeconds: 60,
   rated: false,

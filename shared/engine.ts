@@ -298,6 +298,8 @@ export const GRADES = { 7: ELECTRO, 8: SCIENTIFIC_NOTATION, 9: THI, 10: THERMO }
 
 export type Grade = keyof typeof GRADES;
 
+export const GRADE_IDS = Object.keys(GRADES).map(Number) as Grade[];
+
 function addToColumn(columns: Columns, column: Column, amount: number): Columns {
   return { ...columns, [column]: (columns[column] ?? 0) + amount };
 }

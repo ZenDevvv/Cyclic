@@ -127,7 +127,7 @@ function QuickMatch({ className = '' }: { className?: string }) {
         {PRESET_IDS.map((id) => {
           const p = PRESETS[id];
           const searching = queue.preset === id;
-          const waiting = counts?.[id] ?? 0;
+          const waiting = counts?.[7][id] ?? 0;
           return (
             <button
               key={id}
