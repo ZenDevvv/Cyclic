@@ -94,6 +94,8 @@ Board themes (Settings → Board): **Match the grade** (default) gives each grad
 - Sizes: **12** (meta, axis, pills) · **14** (body, rows, nav) · **16** (card titles) · **20** (page
   title, h1) · **24** (KPI figures, scores) · **28–32** (clock digits only). Nothing at 40+.
 - `font-variant-numeric: tabular-nums` on every score, clock, rating, count and table figure (`.num`).
+- Exponents go through `MathText` as real superscripts: Inter's web font has only ¹ ² ³, and the rest would fall back
+  to another font. Numbers come from `shared/notation.ts`; use `shortScore` where a player's name must fit beside them.
 - Sentence case everywhere. No tracked uppercase labels. Room codes are IDs and may use the monospace
   stack (`ui-monospace`) — nothing else does.
 

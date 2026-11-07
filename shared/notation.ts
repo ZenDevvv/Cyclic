@@ -80,6 +80,15 @@ export const gradeName = (grade: Grade): string => `Grade ${grade} · ${GRADES[g
 /** A score or total in the grade's own unit, e.g. "₱1,240". */
 export const scoreText = (value: number, grade: Grade = DEFAULT_RULES.grade): string => quantity(GRADES[grade].scoreUnit, value);
 
+/** A score for tight spaces, where a player's name has to fit beside it: "1.23 × 10²⁴" or "44,500 cal". */
+export function shortScore(value: number, grade: Grade = DEFAULT_RULES.grade): string {
+  const unit = GRADES[grade].scoreUnit;
+  if (unit === 'cal') return `${value.toLocaleString('en-US')} cal`;
+  if (unit !== 'sci' || value === 0) return scoreText(value, grade);
+  const { mantissa, exponent } = scientificParts(value, 3);
+  return `${mantissa} × 10${exponent}`;
+}
+
 /** A final score. Grade 9 compares totals in °C, the same order as °F, so it shows both. */
 export function finalText(value: number, grade: Grade = DEFAULT_RULES.grade): string {
   if (grade !== 9) return scoreText(value, grade);

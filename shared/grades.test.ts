@@ -27,7 +27,7 @@ import {
 } from './engine.ts';
 import { chooseTurn, evaluate, type BotLevel } from './bot.ts';
 import { encodeBoard, decodeBoard } from './codec.ts';
-import { chipFace, equationParts, equationText, finalText, gradeName, previewText, scoreText, scoringGuide, stepText } from './notation.ts';
+import { chipFace, equationParts, equationText, finalText, gradeName, previewText, scoreText, scoringGuide, shortScore, stepText } from './notation.ts';
 
 const ALL: Grade[] = [7, 8, 9, 10];
 const OPS: Op[] = ['add', 'sub', 'mul', 'div'];
@@ -476,6 +476,15 @@ test('every chip in every grade fits the chip face', () => {
       assert.ok((sub ?? '').length <= 6, `${sub} is too long`);
     }
   }
+});
+
+test('tight spaces get a shorter score, so a player name still fits', () => {
+  assert.equal(shortScore(1240, 7), '₱1,240');
+  assert.equal(shortScore(1.23456e24, 8), '1.23 × 10²⁴');
+  assert.equal(shortScore(0, 8), '0');
+  assert.equal(shortScore(1620, 9), '1620°F');
+  assert.equal(shortScore(444500, 10), '444,500 cal');
+  assert.ok(shortScore(444500, 10).length < scoreText(444500, 10).length);
 });
 
 test('grades are named the same way everywhere', () => {

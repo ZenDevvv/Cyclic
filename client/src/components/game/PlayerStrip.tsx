@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import type { Grade, Side } from '../../../../shared/engine.ts';
-import { scoreText } from '../../../../shared/notation.ts';
+import { shortScore } from '../../../../shared/notation.ts';
 import { Avatar } from '../ui/Avatar.tsx';
 import { MathText } from '../ui/MathText.tsx';
 import { SideDot } from '../ui/controls.tsx';
@@ -70,7 +70,7 @@ export function PlayerStrip({ side, player, grade, score, toMove, moveLeft, move
         </p>
       </div>
       <div className="flex-none text-right">
-        <p className={`num font-semibold ${grade === 7 ? 'text-figure' : 'text-card'}`}><MathText>{scoreText(score, grade)}</MathText></p>
+        <p className={`num font-semibold ${grade === 7 ? 'text-figure' : 'text-card'}`}><MathText>{shortScore(score, grade)}</MathText></p>
       </div>
       {moveSeconds > 0 && (
         <div

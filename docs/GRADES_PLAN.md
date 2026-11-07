@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 to 7 built on 2026-11-07; Phase 8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** all eight phases built on 2026-11-07. Next is `DATABASE_PLAN.md`, which needs a free Neon project first. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -196,11 +196,13 @@ in every grade, which suits a beginner but may be weaker than the name suggests.
 
 See section 5. Add the tokens, update `DESIGN.md` §2 and §7 in the same change, and run the taste-skill linter.
 
-### Phase 8: finish (small)
+### Phase 8: finish (small) — built
 
 - Extend `e2e/play.e2e.ts` to play a non-default grade through two browsers.
 - Run the DESIGN.md §12 checks at 1440, 768 and 390 for each grade.
 - Update `README.md`, `AGENTS.md` and `REVIEW_NOTES.md`, then start `DATABASE_PLAN.md`.
+- Tight spaces use `shortScore`: a long calories score had squeezed player names down to one letter on phones.
+- The lobby's practice links became buttons, because the grade picker left a blank band in "Play a friend".
 
 ## 5. Grade themes
 
@@ -233,6 +235,7 @@ were too faint, so both changed.
 | One term dominates Grade 8 | Measured in Phase 4: 98% of the loser's score, though skill still decides. Play it first |
 | Grade 9 half-scores on the shared board | Measured in Phase 3: 21% of captures score, the same as Grade 7, so it stays |
 | A proper manual contradicts section 2 | Rule calls are data in `GRADES`, so most fixes are one-line |
+| Chip text is small on phones | Grade 8's exponents are about 6 px at 390 px wide. The ledger and previews repeat them in full |
 | Grade 8 numbers break layouts | Test the longest values at 390 px in Phase 6 |
 | `engine.ts` grows large | Accept it; splitting would need a change to hard rule 2 |
 

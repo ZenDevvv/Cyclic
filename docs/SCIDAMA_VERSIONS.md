@@ -1,7 +1,7 @@
 # Scidama versions by grade (research notes)
 
-**Status:** research from 2026-11-07. Nothing here is implemented. `RULES.md` is still the spec for what the
-engine does; this file records what the published Sci-Dama materials say.
+**Status:** research from 2026-11-07, all built by `GRADES_PLAN.md`. `RULES.md` is the spec for what the engine does;
+this file records what the published Sci-Dama materials say, and where we had to decide for ourselves.
 
 No official rulebook was found. The sources are classroom guidelines and a 2011 teacher's blog, and they use
 the old year levels. First to Fourth Year map to Grades 7 to 10. The best single source is the owner's PDF copy
@@ -129,18 +129,13 @@ lookup is unknown.
 
 ## Where the current build differs
 
-These compare `RULES.md` with the sources. None have been changed.
-
 | Rule | Sources | Current build |
 | --- | --- | --- |
-| Winner | Lower total wins | Higher total wins |
-| Most captures | Required | `maxCapture` room rule, off by default |
-| Dama capture priority | Required | Not listed in `RULES.md` |
-| kWh rate | ₱5 in the sample sheet | ₱3 |
-| When kWh converts | Once, on the final total | On each capture and remaining chip (same total) |
 | Late move | Warning and forced move; fourth disqualifies | Loses on the first timeout |
 | Touch move | Required | Not used |
 | Repetitive moves | End the game | Not detected |
+| Board | A separate board for THI | One board for every grade (the owner's decision) |
+| Start of the game | Drawing lots or a coin toss | Red moves first; hosts choose or randomise sides |
 
 ## Still unknown
 

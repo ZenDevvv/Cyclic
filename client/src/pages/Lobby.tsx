@@ -77,16 +77,17 @@ export function Lobby() {
               <p className="mt-2 text-meta text-muted">Get an invite link. Pick the clock, the side and the rules.</p>
             </div>
             <JoinByCode />
-            <p className="mt-auto text-body text-muted">
-              Or practise here, unrated:{' '}
-              <Link to="/play/bot" className="text-ink underline-offset-4 hover:underline">
-                the bot
-              </Link>{' '}
-              ·{' '}
-              <Link to="/play/local" className="text-ink underline-offset-4 hover:underline">
-                pass and play
-              </Link>
-            </p>
+            <div className="mt-auto">
+              <p className="mb-2 text-body font-medium">Practise here, unrated</p>
+              <div className="flex flex-wrap gap-2">
+                <ButtonLink to="/play/bot" variant="secondary">
+                  Play the bot
+                </ButtonLink>
+                <ButtonLink to="/play/local" variant="secondary">
+                  Pass and play
+                </ButtonLink>
+              </div>
+            </div>
           </div>
         </Panel>
       </div>

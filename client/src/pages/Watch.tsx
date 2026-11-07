@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router';
 import { decodeBoard } from '../../../shared/codec.ts';
 import { initialBoard } from '../../../shared/engine.ts';
-import { gradeName, scoreText } from '../../../shared/notation.ts';
+import { gradeName, shortScore } from '../../../shared/notation.ts';
 import { timeControlLabel } from '../../../shared/presets.ts';
 import type { LiveGame } from '../../../shared/protocol.ts';
 import { Board } from '../components/board/Board.tsx';
@@ -87,7 +87,7 @@ function LiveCard({ game }: { game: LiveGame }) {
               <SideDot side={side} />
               <span className={`min-w-0 flex-1 truncate font-medium ${game.turn === side ? 'text-ink' : 'text-muted'}`}>{game[side].name}</span>
               <span className="num text-meta text-faint">{game[side].rating}</span>
-              <span className="num flex-none text-right font-semibold"><MathText>{scoreText(game.scores[side], grade)}</MathText></span>
+              <span className="num flex-none text-right font-semibold"><MathText>{shortScore(game.scores[side], grade)}</MathText></span>
             </p>
           ))}
           <p className="num mt-1 text-meta text-muted">
