@@ -7,6 +7,8 @@ export type Op = 'add' | 'sub' | 'mul' | 'div';
 /** A column on the score sheet. Humidity is scored in °F, so it has none; g·°C has no chip of its own. */
 export type Column = Exclude<Unit, 'pct'> | 'gC';
 export type Columns = Partial<Record<Column, number>>;
+/** The unit a final score is written in. Grade 10's combines its columns into calories. */
+export type ScoreUnit = Column | 'cal';
 
 export interface Piece {
   id: string; // stable for the whole game, e.g. "r-P12", "b-kWh3"
@@ -47,8 +49,10 @@ export interface Equation {
   sameUnit: boolean;
   /** Score-sheet column the result goes in. */
   column: Column;
-  /** Result of the arithmetic; null means no score (NS). */
+  /** The value that goes in the column, before any dama factor; null means no score (NS). */
   base: number | null;
+  /** The arithmetic's own result when the grade converts it, such as 65% before it becomes 91°F. */
+  converted?: Chip;
   /** ×2 for an attacking dama, ×2 for a captured dama. */
   kingFactor: number;
   /** What goes in the column: the base with the dama factors applied. */
@@ -183,15 +187,23 @@ export interface GradeRules {
   /** The score sheet's columns, in print order. */
   columns: readonly Column[];
   /** The unit a final score is written in. */
-  scoreUnit: Column;
+  scoreUnit: ScoreUnit;
   /** The arithmetic of a capture, before any dama factor. A null base is no score (NS). */
-  capture(attacker: Piece, captured: Piece, op: Op): { column: Column; base: number | null };
+  capture(attacker: Piece, captured: Piece, op: Op): { column: Column; base: number | null; converted?: Chip };
   /** Where a chip left on the board goes on the sheet, before any dama factor. */
   remaining(piece: Piece): { column: Column; amount: number };
   /** Converts a column to the score, for grades that add their columns up. */
   unitFactor(column: Column): number;
   /** The score a sheet comes to. The lower score wins in every grade. */
   total(columns: Columns): number;
+}
+
+/** Adding or subtracting like quantities, the arithmetic every grade shares. Below zero is no score. */
+function likeUnits(attacker: Piece, captured: Piece, op: Op): number | null {
+  if (op === 'add') return attacker.value + captured.value;
+  if (op !== 'sub') return null;
+  const diff = attacker.value - captured.value;
+  return diff >= 0 ? diff : null;
 }
 
 const electroColumn = (unit: Unit): Column => (unit === 'kWh' ? 'kWh' : 'P');
@@ -207,18 +219,82 @@ const ELECTRO: GradeRules = {
   scoreUnit: 'P',
   capture(attacker, captured, op) {
     const column = electroColumn(attacker.unit);
-    if (attacker.unit !== captured.unit) return { column, base: null };
-    if (op === 'add') return { column, base: attacker.value + captured.value };
-    if (op !== 'sub') return { column, base: null };
-    const diff = attacker.value - captured.value;
-    return { column, base: diff >= 0 ? diff : null };
+    return { column, base: attacker.unit === captured.unit ? likeUnits(attacker, captured, op) : null };
   },
   remaining: (piece) => ({ column: electroColumn(piece.unit), amount: piece.value }),
   unitFactor: (column) => (column === 'kWh' ? KWH_RATE : 1),
   total: (columns) => (columns.kWh ?? 0) * KWH_RATE + (columns.P ?? 0),
 };
 
-export const GRADES = { 7: ELECTRO } as const satisfies Record<number, GradeRules>;
+const sci = (value: number): Chip => ({ unit: 'sci', value });
+
+/** No units to mismatch, so all four operators score. The sources give no scoring for this grade: see RULES.md. */
+const SCIENTIFIC_NOTATION: GradeRules = {
+  name: 'Scientific Notation',
+  chips: [
+    sci(1.1e-1), sci(2.2e2), sci(3.3e-3), sci(4.4e4), sci(5.5e-5), sci(6.6e6),
+    sci(7.7e-7), sci(8.8e8), sci(9.9e-9), sci(1.01e10), sci(1.111e-11), sci(1.212e12),
+  ],
+  columns: ['sci'],
+  scoreUnit: 'sci',
+  capture(attacker, captured, op) {
+    if (op === 'mul') return { column: 'sci', base: attacker.value * captured.value };
+    if (op === 'div') return { column: 'sci', base: attacker.value / captured.value };
+    return { column: 'sci', base: likeUnits(attacker, captured, op) };
+  },
+  remaining: (piece) => ({ column: 'sci', amount: piece.value }),
+  unitFactor: () => 1,
+  total: (columns) => columns.sci ?? 0,
+};
+
+/** The published table: relative humidity (%) to temperature humidity index (°F). */
+export const THI_TABLE: Readonly<Record<number, number>> = {
+  0: 78, 5: 79, 10: 80, 15: 81, 20: 82, 25: 83, 30: 84, 35: 85, 40: 86, 45: 87, 50: 88,
+  55: 89, 60: 90, 65: 91, 70: 93, 75: 95, 80: 97, 85: 99, 90: 102, 95: 105, 100: 108,
+};
+
+const THI: GradeRules = {
+  name: 'THI',
+  chips: [
+    { unit: 'F', value: 70 }, { unit: 'pct', value: 25 }, { unit: 'F', value: 75 }, { unit: 'pct', value: 30 },
+    { unit: 'F', value: 80 }, { unit: 'pct', value: 35 }, { unit: 'F', value: 85 }, { unit: 'pct', value: 40 },
+    { unit: 'F', value: 110 }, { unit: 'pct', value: 45 }, { unit: 'F', value: 120 }, { unit: 'pct', value: 50 },
+  ],
+  columns: ['F'],
+  scoreUnit: 'F',
+  capture(attacker, captured, op) {
+    if (attacker.unit !== captured.unit) return { column: 'F', base: null };
+    const result = likeUnits(attacker, captured, op);
+    if (result === null || attacker.unit === 'F') return { column: 'F', base: result };
+    return { column: 'F', base: THI_TABLE[result], converted: { unit: 'pct', value: result } };
+  },
+  // Each humidity chip is looked up alone: summed chips could pass 100%, beyond the table.
+  remaining: (piece) => ({ column: 'F', amount: piece.unit === 'pct' ? THI_TABLE[piece.value] : piece.value }),
+  unitFactor: () => 1,
+  total: (columns) => columns.F ?? 0,
+};
+
+const thermoColumn = (unit: Unit): Column => (unit === 'g' ? 'g' : 'C');
+
+const THERMO: GradeRules = {
+  name: 'Thermo',
+  chips: [
+    { unit: 'g', value: 3 }, { unit: 'C', value: 2 }, { unit: 'g', value: 7 }, { unit: 'C', value: 11 },
+    { unit: 'g', value: 13 }, { unit: 'C', value: 17 }, { unit: 'g', value: 19 }, { unit: 'C', value: 23 },
+    { unit: 'g', value: 29 }, { unit: 'C', value: 31 }, { unit: 'g', value: 37 }, { unit: 'C', value: 55 },
+  ],
+  columns: ['g', 'C', 'gC'],
+  scoreUnit: 'cal',
+  capture(attacker, captured, op) {
+    if (attacker.unit === captured.unit) return { column: thermoColumn(attacker.unit), base: likeUnits(attacker, captured, op) };
+    return { column: 'gC', base: op === 'mul' ? attacker.value * captured.value : null };
+  },
+  remaining: (piece) => ({ column: thermoColumn(piece.unit), amount: piece.value }),
+  unitFactor: () => 1,
+  total: (columns) => (columns.g ?? 0) * (columns.C ?? 0) + (columns.gC ?? 0),
+};
+
+export const GRADES = { 7: ELECTRO, 8: SCIENTIFIC_NOTATION, 9: THI, 10: THERMO } as const satisfies Record<number, GradeRules>;
 
 export type Grade = keyof typeof GRADES;
 
@@ -386,7 +462,7 @@ export function forcedStep(state: GameState): LegalStep | null {
 
 export function scoreCapture(attacker: Piece, captured: Piece, op: Op, grade: Grade = DEFAULT_RULES.grade): Equation {
   const rules = GRADES[grade];
-  const { column, base } = rules.capture(attacker, captured, op);
+  const { column, base, converted } = rules.capture(attacker, captured, op);
   const kingFactor = (attacker.king ? 2 : 1) * (captured.king ? 2 : 1);
   const unitFactor = rules.unitFactor(column);
   const amount = base === null ? 0 : base * kingFactor;
@@ -397,6 +473,7 @@ export function scoreCapture(attacker: Piece, captured: Piece, op: Op, grade: Gr
     sameUnit: attacker.unit === captured.unit,
     column,
     base,
+    ...(converted && { converted }),
     kingFactor,
     amount,
     unitFactor,

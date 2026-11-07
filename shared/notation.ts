@@ -1,5 +1,5 @@
 // Human-readable labels for chips, squares, operators and capture equations.
-import type { Column, EndReason, Equation, GameState, Grade, Op, Piece, Side, StepRecord, Unit } from './engine.ts';
+import type { EndReason, Equation, GameState, Grade, Op, Piece, ScoreUnit, Side, StepRecord, Unit } from './engine.ts';
 import { capturesFrom, DEFAULT_RULES, forcedStep, GRADES, legalSteps, mustCaptureSquares, PLAYABLE, xOf, yOf } from './engine.ts';
 
 export const OP_SYMBOL: Record<Op, string> = { add: '+', sub: '−', mul: '×', div: '÷' };
@@ -18,8 +18,8 @@ export function scientific(value: number): string {
   return `${figures} × 10${[...String(Number(exponent))].map((c) => SUPERSCRIPT[c]).join('')}`;
 }
 
-/** Any amount in its unit, e.g. "₱8", "11 kWh", "1.1 × 10⁻¹", "25%", "91°F", "37 g", "37°C" or "370 g·°C". */
-export function quantity(unit: Unit | Column, value: number): string {
+/** Any amount in its unit, e.g. "₱8", "11 kWh", "1.1 × 10⁻¹", "25%", "91°F", "37 g", "37°C", "370 g·°C" or "4,576 calories". */
+export function quantity(unit: Unit | ScoreUnit, value: number): string {
   switch (unit) {
     case 'P':
       return `₱${value.toLocaleString('en-US')}`;
@@ -37,6 +37,8 @@ export function quantity(unit: Unit | Column, value: number): string {
       return `${value}°C`;
     case 'gC':
       return `${value} g·°C`;
+    case 'cal':
+      return `${value.toLocaleString('en-US')} calories`;
   }
 }
 
@@ -45,13 +47,20 @@ export const chipLabel = (p: Pick<Piece, 'unit' | 'value'>): string => quantity(
 /** A score or total in the grade's own unit, e.g. "₱1,240". */
 export const scoreText = (value: number, grade: Grade = DEFAULT_RULES.grade): string => quantity(GRADES[grade].scoreUnit, value);
 
+/** A final score. Grade 9 compares totals in °C, the same order as °F, so it shows both. */
+export function finalText(value: number, grade: Grade = DEFAULT_RULES.grade): string {
+  if (grade !== 9) return scoreText(value, grade);
+  const celsius = Math.round(((value - 32) * 5) / 9 * 10) / 10;
+  return `${scoreText(value, grade)} (${quantity('C', celsius)})`;
+}
+
 /** "(x,y)" in red's frame, as printed on the board edges. */
 export const coord = (square: number): string => `(${xOf(square)},${yOf(square)})`;
 
 export interface EquationParts {
   /** "₱8 + ₱4" */
   left: string;
-  /** "₱12", "8 kWh" or "NS" */
+  /** "₱12", "8 kWh", "65% → 91°F" or "NS" */
   result: string;
   /** e.g. ["×2 dama", "×5 ₱/kWh"]; empty when nothing scored */
   factors: string[];
@@ -61,6 +70,15 @@ export interface EquationParts {
   /** Why it scored nothing, in words; null when it scored. */
   reason: string | null;
 }
+
+const NOT_A: Partial<Record<Unit, string>> = {
+  P: 'Not pesos',
+  kWh: 'Not energy',
+  pct: 'Not humidity',
+  F: 'Not temperature',
+  g: 'Not mass',
+  C: 'Not temperature',
+};
 
 export function equationParts(eq: Equation): EquationParts {
   const left = `${quantity(eq.a.unit, eq.a.value)} ${OP_SYMBOL[eq.op]} ${quantity(eq.b.unit, eq.b.value)}`;
@@ -72,14 +90,15 @@ export function equationParts(eq: Equation): EquationParts {
     if (eq.unitFactor !== 1) factors.push(`×${eq.unitFactor} ₱/kWh`);
   }
   let reason: string | null = null;
-  if (!eq.sameUnit) reason = 'Units differ';
-  else if (eq.op === 'mul' || eq.op === 'div') reason = eq.a.unit === 'P' ? 'Not pesos' : 'Not energy';
-  else if (eq.base === null) reason = 'Below zero';
+  if (!scored && !eq.sameUnit) reason = 'Units differ';
+  else if (!scored && (eq.op === 'mul' || eq.op === 'div')) reason = NOT_A[eq.a.unit] ?? null;
+  else if (!scored) reason = 'Below zero';
+  const value = scored ? quantity(eq.column, eq.base!) : 'NS';
   return {
     left,
-    result: scored ? quantity(eq.column, eq.base!) : 'NS',
+    result: scored && eq.converted ? `${quantity(eq.converted.unit, eq.converted.value)} → ${value}` : value,
     factors,
-    points: `₱${eq.points}`,
+    points: quantity(eq.column === 'kWh' ? 'P' : eq.column, eq.points),
     scored,
     reason,
   };

@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 and 2 built on 2026-11-07; Phases 3–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 to 3 built on 2026-11-07; Phases 4–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -112,7 +112,7 @@ All of this stays in `shared/engine.ts`, as hard rule 2 requires.
 
 **Done when** the Grade 7 tests pass unchanged apart from the rate, and a sample-sheet test reproduces ₱126.
 
-### Phase 3: add Grades 8, 9 and 10 to the engine (medium)
+### Phase 3: add Grades 8, 9 and 10 to the engine (medium) — built
 
 - **Grade 8:** chips from the table in `SCIDAMA_VERSIONS.md`, stored as plain numbers. Display as
   `2.2011 × 10²`, never as long decimals.
@@ -123,6 +123,17 @@ All of this stays in `shared/engine.ts`, as hard rule 2 requires.
   examples: `25% + 40%` gives 91 °F, `37 °C × 10 g` gives 370 g·°C, and the 4576 calories sheet.
 
 **Done when** a full scripted game finishes in each grade with the expected winner.
+
+Measured over 1,000 random games per grade, with each side winning about half:
+
+| Grade | Captures that score | Median final |
+| --- | --- | --- |
+| 7 | 21% | ₱96 |
+| 8 | 90% | 2.4 × 10¹² |
+| 9 | 21% | 415°F |
+| 10 | 31% | 2,069 calories |
+
+Grade 8's finals run as high as 10²⁴, so one large product can decide a game. Check that when it is first played.
 
 ### Phase 4: teach the bot every grade (small to medium)
 
@@ -197,7 +208,7 @@ These colours are starting points, to be checked on real screens.
 | Risk | Plan |
 | --- | --- |
 | Our Grade 8 rules are invented | Keep them in one table entry, and label them in Learn |
-| Grade 9 half-scores on the shared board | Play-test in Phase 3; if it feels wrong, add a per-grade operator table |
+| Grade 9 half-scores on the shared board | Measured in Phase 3: 21% of captures score, the same as Grade 7, so it stays |
 | A proper manual contradicts section 2 | Rule calls are data in `GRADES`, so most fixes are one-line |
 | Grade 8 numbers break layouts | Test the longest values at 390 px in Phase 6 |
 | `engine.ts` grows large | Accept it; splitting would need a change to hard rule 2 |
