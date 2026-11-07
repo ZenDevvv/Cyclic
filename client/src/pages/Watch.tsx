@@ -2,13 +2,15 @@ import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router';
 import { decodeBoard } from '../../../shared/codec.ts';
 import { initialBoard } from '../../../shared/engine.ts';
+import { gradeName, shortScore } from '../../../shared/notation.ts';
 import { timeControlLabel } from '../../../shared/presets.ts';
 import type { LiveGame } from '../../../shared/protocol.ts';
 import { Board } from '../components/board/Board.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { ButtonLink } from '../components/ui/Button.tsx';
 import { EmptyState, SideDot, Skeleton } from '../components/ui/controls.tsx';
 import { subscribeLobby } from '../lib/socket.ts';
-import { peso, plural } from '../lib/format.ts';
+import { plural } from '../lib/format.ts';
 import { useTitle } from '../lib/useTitle.ts';
 import { useLobby } from '../store/lobby.ts';
 
@@ -73,22 +75,23 @@ function JoinCard({ waiting }: { waiting: number }) {
 }
 
 function LiveCard({ game }: { game: LiveGame }) {
-  const board = useMemo(() => decodeBoard(game.board), [game.board]);
+  const { grade } = game.settings;
+  const board = useMemo(() => decodeBoard(game.board, grade), [game.board, grade]);
   return (
     <li className="animate-row">
       <Link to={`/room/${game.code}`} className="group block rounded-card bg-surface p-3.5 transition-colors hover:bg-raised">
-        <Board board={board} orientation="red" coordinates={false} hints={false} label={`${game.red.name} against ${game.blue.name}`} />
+        <Board board={board} grade={grade} orientation="red" coordinates={false} hints={false} label={`${game.red.name} against ${game.blue.name}`} />
         <div className="mt-3 flex flex-col gap-1.5 px-1">
           {(['blue', 'red'] as const).map((side) => (
             <p key={side} className="flex items-center gap-2">
               <SideDot side={side} />
               <span className={`min-w-0 flex-1 truncate font-medium ${game.turn === side ? 'text-ink' : 'text-muted'}`}>{game[side].name}</span>
               <span className="num text-meta text-faint">{game[side].rating}</span>
-              <span className="num w-14 text-right font-semibold">{peso(game.scores[side])}</span>
+              <span className="num flex-none text-right font-semibold"><MathText>{shortScore(game.scores[side], grade)}</MathText></span>
             </p>
           ))}
           <p className="num mt-1 text-meta text-muted">
-            {game.mode === 'quick' ? 'Quick match' : 'Room'} · {timeControlLabel(game.settings)}
+            {game.mode === 'quick' ? 'Quick match' : 'Room'} · {gradeName(grade)} · {timeControlLabel(game.settings)}
             {game.spectators ? ` · ${game.spectators} watching` : ''}
           </p>
         </div>

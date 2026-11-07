@@ -1,13 +1,17 @@
 // An online room: the waiting room before the game, then the game itself, then the result and rematch.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
+import { forcedStep, initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
+import { boardLabel, captureNotice, gradeName, scoreText } from '../../../shared/notation.ts';
 import { timeControlLabel, type RoomSettings } from '../../../shared/presets.ts';
 import type { RoomSnapshot, SeatView, Visibility } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
 import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
+import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
+import { ScoreSheet } from '../components/game/ScoreSheet.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { Chat } from '../components/game/Chat.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, ButtonLink, IconButton } from '../components/ui/Button.tsx';
@@ -214,7 +218,7 @@ function WaitingRoom({ snap, spectator }: { snap: RoomSnapshot; spectator: boole
 
       <div className="grid gap-3.5 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3.5">
-          <Board board={initialBoard()} orientation={mySide ?? 'red'} label="Starting position" />
+          <Board board={initialBoard(snap.settings.grade)} grade={snap.settings.grade} orientation={mySide ?? 'red'} label="Starting position" />
           <p className="text-meta text-muted">
             Starting position. Red moves first; the operator under a capture's landing square sets its score.{' '}
             <Link to="/learn" className="text-ink underline-offset-4 hover:underline">
@@ -269,10 +273,14 @@ function WaitingRoom({ snap, spectator }: { snap: RoomSnapshot; spectator: boole
               <SettingsEditor settings={snap.settings} visibility={snap.visibility} onChange={update} />
             ) : (
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-body">
+                <dt className="text-muted">Grade</dt>
+                <dd>{gradeName(snap.settings.grade)}</dd>
                 <dt className="text-muted">Clock</dt>
                 <dd>{timeControlLabel(snap.settings)}</dd>
                 <dt className="text-muted">Capturing</dt>
                 <dd>{snap.settings.maxCapture ? 'Must take the most chips' : 'Any capture'}</dd>
+                <dt className="text-muted">Auto-capture</dt>
+                <dd>{snap.settings.autoCapture ? 'On' : 'Off'}</dd>
                 <dt className="text-muted">Spectators</dt>
                 <dd>{snap.settings.allowSpectators ? 'Allowed' : 'Not allowed'}</dd>
               </dl>
@@ -367,6 +375,10 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
     blue: seatInfo(snap.seats.blue, me?.id, snap.hostId),
   };
   const last = game.lastStep;
+  const { autoCapture } = snap.settings;
+  const notice = captureNotice(state, last, { autoCapture, viewer: mySide });
+  // The server is about to play this capture, so the board waits instead of racing it.
+  const autoPending = autoCapture && forcedStep(state) !== null;
   const mark: BoardMark | null = last ? { from: last.from, to: last.to, captureSquare: last.captureSquare, captured: last.captured, key: last.index } : null;
   const moveLeft = game.clock.moveEndsAt ? game.clock.moveEndsAt - sNow : null;
   const gameLeft = game.clock.gameEndsAt ? game.clock.gameEndsAt - sNow : null;
@@ -386,6 +398,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
     <PlayerStrip
       side={side}
       player={players[side]}
+      grade={snap.settings.grade}
       score={state.scores[side]}
       toMove={state.turn === side}
       moveLeft={moveLeft}
@@ -428,6 +441,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
 
   return (
     <>
+      <CaptureAnnouncer text={notice} />
       <GameLayout
         header={
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -435,7 +449,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
               {players.red?.name ?? 'Red'} <span className="text-faint">vs</span> {players.blue?.name ?? 'Blue'}
             </h1>
             <p className="num text-meta text-muted">
-              {snap.mode === 'quick' ? 'Quick match' : 'Room'} <span className={ID_FONT}>{snap.code}</span> · {snap.settings.rated ? 'Rated' : 'Casual'}
+              {snap.mode === 'quick' ? 'Quick match' : 'Room'} <span className={ID_FONT}>{snap.code}</span> · {gradeName(snap.settings.grade)} · {snap.settings.rated ? 'Rated' : 'Casual'}
               {snap.spectators.length ? ` · ${plural(snap.spectators.length, 'spectator')}` : ''}
             </p>
           </div>
@@ -445,16 +459,25 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
             board={state.board}
             state={state}
             orientation={orientation}
-            interactive={!!mySide && playing && state.turn === mySide && !pending}
+            interactive={!!mySide && playing && state.turn === mySide && !pending && !autoPending}
             onStep={onStep}
             onIllegal={playIllegal}
             last={mark}
-            label={`Board, ${state.turn} to move`}
+            label={boardLabel(state)}
           />
         }
         top={strip(other(orientation))}
         bottom={strip(orientation)}
-        banner={banner}
+        banner={
+          notice ? (
+            <div className="flex flex-col gap-3.5">
+              <CaptureNotice text={notice} />
+              {banner}
+            </div>
+          ) : (
+            banner
+          )
+        }
         panel={
           <>
             <div className="flex items-center justify-between gap-3 px-5.5 pt-2">
@@ -482,11 +505,14 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
             {tab === 'ledger' ? (
               <>
                 <p className="px-5.5 pt-2 text-meta text-muted">
-                  {state.result
-                    ? `${resultTitle(state.result, players, mySide)} · ₱${state.result.final.red}–₱${state.result.final.blue}`
-                    : `Turn ${state.turnNumber} · ${timeControlLabel(snap.settings)}`}
+                  <MathText>
+                    {state.result
+                      ? `${resultTitle(state.result, players, mySide)} · ${scoreText(state.result.final.red, snap.settings.grade)} to ${scoreText(state.result.final.blue, snap.settings.grade)}`
+                      : `Turn ${state.turnNumber} · ${timeControlLabel(snap.settings)} · lowest total wins`}
+                  </MathText>
                 </p>
-                <Ledger records={records} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
+                <ScoreSheet grade={snap.settings.grade} columns={state.columns} />
+                <Ledger records={records} grade={snap.settings.grade} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
               </>
             ) : (
               <Chat messages={chat} canSend className="min-h-0 flex-1 px-5.5 pb-4" />
@@ -560,6 +586,8 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
           open={resultOpen}
           onClose={() => setResultOpen(false)}
           result={state.result}
+          grade={snap.settings.grade}
+          columns={state.columns}
           captures={state.scores}
           players={players}
           mySide={mySide}

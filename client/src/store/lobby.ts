@@ -14,7 +14,7 @@ interface LobbyStore {
 
 export const useLobby = create<LobbyStore>(() => ({
   lobby: null,
-  queue: { preset: null, since: null, waiting: 0 },
+  queue: { preset: null, grade: null, since: null, waiting: 0 },
   presence: null,
   seatCode: null,
   connection: 'connecting',

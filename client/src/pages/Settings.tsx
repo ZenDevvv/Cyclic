@@ -1,8 +1,10 @@
 // Settings in two columns: what a setting is on the left, the control (and its preview) on the right.
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { applyStep, initialState, sq, type GameState } from '../../../shared/engine.ts';
+import { encodeBoard } from '../../../shared/codec.ts';
+import { applyStep, GRADE_IDS, initialBoard, initialState, sq, type GameState } from '../../../shared/engine.ts';
 import type { Me } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
+import { MiniBoard } from '../components/board/MiniBoard.tsx';
 import { Button } from '../components/ui/Button.tsx';
 import { Field, Segmented, Switch } from '../components/ui/controls.tsx';
 import { SignInDialog } from '../components/SignInDialog.tsx';
@@ -67,6 +69,16 @@ export default function Settings() {
         aside={
           <div className="max-w-[300px]">
             <Board board={preview.state.board} orientation="red" last={preview.mark} label="Board preview" />
+            {prefs.boardTheme === 'grade' && (
+              <ul className="mt-3 grid grid-cols-4 gap-2">
+                {GRADE_IDS.map((grade) => (
+                  <li key={grade} className="flex flex-col items-center gap-1">
+                    <MiniBoard code={encodeBoard(initialBoard(grade), grade)} grade={grade} size={56} label={`Grade ${grade} board`} />
+                    <span className="num text-meta text-muted">Grade {grade}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         }
       >
@@ -78,6 +90,7 @@ export default function Settings() {
               value={prefs.boardTheme}
               onChange={(v) => prefs.set({ boardTheme: v })}
               options={[
+                { value: 'grade', label: 'Match the grade' },
                 { value: 'felt', label: 'Felt' },
                 { value: 'slate', label: 'Slate' },
                 { value: 'paper', label: 'Original' },
@@ -132,8 +145,14 @@ export default function Settings() {
         </div>
       </Row>
 
-      <Row title="Games" description="Safety catches for online games.">
+      <Row title="Games" description="Safety catches online, and how games on this device play.">
         <Switch checked={prefs.confirmResign} onChange={(v) => prefs.set({ confirmResign: v })} label="Ask before resigning" />
+        <Switch
+          checked={prefs.autoCapture}
+          onChange={(v) => prefs.set({ autoCapture: v })}
+          label="Auto-capture on this device"
+          description="In bot and pass-and-play games, a capture that is your only legal move plays itself. Online, the room's host decides."
+        />
       </Row>
     </div>
   );

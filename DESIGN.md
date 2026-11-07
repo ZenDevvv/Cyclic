@@ -16,7 +16,7 @@ screen follows the skill's **page** rules (§13); every other screen follows the
 
 **Night play on true black; the board is the only bright thing in the room.** Elevation is a lightness
 step alone. Colour is spent on three things only: the board, the two sides (red and blue), and one data
-hue (amber) for points and for marks the player must act on.
+hue (amber) for marks the player must act on.
 
 - **Face** (what makes it Scidama and not a kit): a warm near-black ground, the amber of coin and current
   (₱ and kWh) as the one data hue, and the felt-green board of the original Cyclic build.
@@ -80,9 +80,12 @@ only — never raw hex values.
 }
 ```
 
-Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dadc` / `#3a3d42`), **Paper**
-(the original: `#f5f5f5` / `#035a03`). Piece sets: **Flat** (default, SVG drawn in code) and **Classic**
-(the original Cyclic chip art, downscaled to 160 px WebP).
+Board themes (Settings → Board): **Match the grade** (default) gives each grade its own board: Grade 7 **Felt**
+(above), Grade 8 **Chalk** (`#e4e6e1` / `#23282b`), Grade 9 **Sky** (`#e1e8e6` / `#2c5560`), Grade 10 **Clay**
+(`#ecdfd0` / `#6b3a2a`). Players can instead pick one look for everything: **Felt**, **Slate** (`#d9dadc` /
+`#3a3d42`) or **Paper** (the original: `#f5f5f5` / `#035a03`). Themes change the board only, never the app shell, and
+`shared/themes.test.ts` measures their contrast. Piece sets: **Flat** (default, SVG drawn in code) and **Classic**
+(the original Cyclic chip art, downscaled to 160 px WebP; Grade 7 only, other grades fall back to Flat).
 
 ## 3. Type
 
@@ -91,6 +94,8 @@ Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dad
 - Sizes: **12** (meta, axis, pills) · **14** (body, rows, nav) · **16** (card titles) · **20** (page
   title, h1) · **24** (KPI figures, scores) · **28–32** (clock digits only). Nothing at 40+.
 - `font-variant-numeric: tabular-nums` on every score, clock, rating, count and table figure (`.num`).
+- Exponents go through `MathText` as real superscripts: Inter's web font has only ¹ ² ³, and the rest would fall back
+  to another font. Numbers come from `shared/notation.ts`; use `shortScore` where a player's name must fit beside them.
 - Sentence case everywhere. No tracked uppercase labels. Room codes are IDs and may use the monospace
   stack (`ui-monospace`) — nothing else does.
 
@@ -115,7 +120,9 @@ Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dad
 - Red and blue appear only as side identity: chip rings, a 8 px dot beside a player's name, the running
   clock's side mark. Never as status.
 - Wins/losses use the status pill pairs (pale ink on a dark tint), not the side colours.
-- Amber marks: score figures and gains in the ledger, last-move squares, legal-move dots, the selected
+- Capture points count against the player, because the lowest total wins, so they are never amber: amber reads as a
+  reward. The ledger and landing-square previews use the `--negative` pair.
+- Amber marks: last-move squares, legal-move dots, the selected
   chip's ring, chips that must capture.
 
 ## 6. Components
@@ -141,6 +148,8 @@ Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dad
 - Input: click a chip then a target, or drag. Both share one code path.
 - Marks: last move = amber tint on both squares; selected chip = 3 px amber ring; legal target = amber dot
   (28 % of the square); chips that must capture = 2 px amber ring; illegal attempt = a 120 ms shake.
+- A capture the player cannot avoid also gets a one-line message above the ledger, because Settings can turn
+  the rings off. It is a `--raised` panel, not amber, and it repeats in a screen-reader live region.
 - Coordinates inset in the edge squares at 11 px (toggle in Settings), flipping with the board.
 - Chips slide 180 ms ease-out; captured chips fade 160 ms. With `prefers-reduced-motion` or the setting
   off, they jump.

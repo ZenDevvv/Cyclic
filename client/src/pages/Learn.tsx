@@ -2,21 +2,26 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   applyStep,
+  GRADES,
   initialBoard,
   initialState,
+  KWH_RATE,
   scoreCapture,
   sq,
+  THI_TABLE,
   type Cell,
   type GameState,
+  type Grade,
   type Piece,
   type Side,
   type Step,
   type StepRecord,
   type Unit,
 } from '../../../shared/engine.ts';
-import { equationParts } from '../../../shared/notation.ts';
+import { equationParts, gradeName, scoringGuide } from '../../../shared/notation.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
 import { Chip } from '../components/board/Chip.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
 import { Button, ButtonLink } from '../components/ui/Button.tsx';
 import { useTitle } from '../lib/useTitle.ts';
@@ -24,16 +29,16 @@ import { playIllegal, playStep } from '../lib/sound.ts';
 
 type Spec = [x: number, y: number, side: Side, unit: Unit, value: number, king?: boolean];
 
-function position(specs: Spec[], turn: Side = 'red'): GameState {
+function position(specs: Spec[], grade: Grade, turn: Side = 'red'): GameState {
   const board: Cell[] = new Array(64).fill(null);
   specs.forEach(([x, y, side, unit, value, king = false], n) => {
     board[sq(x, y)] = { id: `${side}-${n}`, side, unit, value, king };
   });
-  return { ...initialState(), board, turn };
+  return { ...initialState({ grade }), board, turn };
 }
 
-function Demo({ specs, caption, turnLimit = 1 }: { specs: Spec[]; caption: ReactNode; turnLimit?: number }) {
-  const start = useMemo(() => position(specs), [specs]);
+function Demo({ specs, caption, grade = 7, turnLimit = 1 }: { specs: Spec[]; caption: ReactNode; grade?: Grade; turnLimit?: number }) {
+  const start = useMemo(() => position(specs, grade), [specs, grade]);
   const [state, setState] = useState(start);
   const [records, setRecords] = useState<StepRecord[]>([]);
   const done = records.length > 0 && !state.jumper && records[records.length - 1].turn >= turnLimit;
@@ -63,7 +68,7 @@ function Demo({ specs, caption, turnLimit = 1 }: { specs: Spec[]; caption: React
         label="Practice board"
       />
       <figcaption className="mt-3 px-1">
-        {records.length ? <Ledger records={records} className="max-h-36" /> : <p className="text-body text-muted">{caption}</p>}
+        {records.length ? <Ledger records={records} grade={grade} className="max-h-36" /> : <p className="text-body text-muted">{caption}</p>}
         <div className="mt-2 flex justify-end">
           <Button
             variant="ghost"
@@ -115,6 +120,69 @@ const EXAMPLES = [
 const SAMPLE_CHIPS: Piece[] = [2, 4, 6, 8, 10, 12].map((v) => ({ id: `p${v}`, side: 'red' as const, unit: 'P' as const, value: v, king: false }));
 const SAMPLE_KWH: Piece[] = [1, 3, 5, 7, 9, 11].map((v) => ({ id: `k${v}`, side: 'blue' as const, unit: 'kWh' as const, value: v, king: false }));
 
+/** A grade's twelve chips, as they look on the board. */
+function GradeChips({ grade }: { grade: Grade }) {
+  return (
+    <div className="mt-2 grid grid-cols-6 gap-2 sm:max-w-md">
+      {GRADES[grade].chips.map((chip) => (
+        <span key={`${chip.unit}${chip.value}`} className="aspect-square">
+          <Chip piece={{ ...chip, side: 'red', king: false }} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Worked captures, computed by the engine. */
+function GradeExamples({ grade }: { grade: Grade }) {
+  const { equations, note } = scoringGuide(grade);
+  return (
+    <div className="mt-2 rounded-card bg-surface p-4">
+      <ul className="flex flex-col">
+        {equations.map((equation) => {
+          const p = equationParts(equation);
+          return (
+            <li key={p.left} className="num flex items-baseline justify-between gap-3 border-b border-rule py-1.5 text-body last:border-b-0">
+              <span className="min-w-0 text-muted">
+                <span className="text-ink">
+                  <MathText>{p.left}</MathText>
+                </span>{' '}
+                = <MathText>{p.result}</MathText>
+              </span>
+              {p.scored ? (
+                <span className="flex-none font-semibold text-negative">
+                  <MathText>{`+${p.points}`}</MathText>
+                </span>
+              ) : (
+                <span className="flex-none text-meta text-faint">{p.reason}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-meta text-muted">{note}</p>
+    </div>
+  );
+}
+
+function ThiTable() {
+  return (
+    <table className="num mt-2 w-full max-w-md border-collapse text-body">
+      <caption className="mb-1 text-left text-meta text-muted">Relative humidity and the °F it scores</caption>
+      <tbody className="grid grid-cols-3 gap-x-6">
+        {Object.entries(THI_TABLE).map(([humidity, fahrenheit]) => (
+          <tr key={humidity} className="flex justify-between border-b border-rule py-1">
+            <th scope="row" className="font-normal text-muted">
+              {humidity}%
+            </th>
+            <td>{fahrenheit}°F</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function Learn() {
   useTitle('How to play');
   const startBoard = useMemo(() => initialBoard(), []);
@@ -126,7 +194,11 @@ export default function Learn() {
           <p className="mt-3 text-card leading-[26px]">
             Scidama is checkers where every capture is a sum. Each chip is a quantity, in pesos or in kilowatt-hours. When you jump
             a chip, the sign on the square you land on combines the two quantities, and you score only when the result is still
-            money or energy. Highest total at the end wins.
+            money or energy. Everything you score counts against you: the lowest total at the end wins.
+          </p>
+          <p className="mt-3 text-body text-muted">
+            This page teaches Grade 7, Electro. Grades 8, 9 and 10 play on the same board with the same moves, and change the chips
+            and the scoring: see <a href="#grades" className="text-ink underline-offset-4 hover:underline">the other grades</a>.
           </p>
           <nav aria-label="On this page" className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-body text-muted">
             {[
@@ -136,6 +208,7 @@ export default function Learn() {
               ['scoring', 'Scoring with units'],
               ['dama', 'The dama'],
               ['ending', 'The end'],
+              ['grades', 'The other grades'],
               ['online', 'Playing online'],
             ].map(([id, label]) => (
               <a key={id} href={`#${id}`} className="hover:text-ink">
@@ -211,9 +284,15 @@ export default function Learn() {
           <strong>Capturing is compulsory.</strong> If any of your chips can capture, you must capture. If the chip that captured
           can capture again, it keeps going in the same turn.
         </p>
-        <p className="text-body text-muted">
-          Room option: with "take the most chips" on, you must choose the sequence that captures the most, as in tournament Damath.
+        <p>
+          <strong>The most chips come first.</strong> You must choose the capture that takes the most chips, and on equal counts a
+          dama goes before an ordinary chip.
         </p>
+        <p>
+          <strong>Auto-capture.</strong> When a capture is your only legal move, the game plays it for you after a moment and says
+          so above the ledger.
+        </p>
+        <p className="text-body text-muted">A room's host can turn off either rule before the game starts.</p>
       </Section>
 
       <Section id="scoring" title="Scoring with units">
@@ -228,7 +307,7 @@ export default function Learn() {
           <li>A subtraction below zero scores nothing.</li>
         </ul>
         <p>
-          A dama doubles the result, and taking a dama doubles it again. Energy is converted to money at <strong>₱3 per kWh</strong>.
+          A dama doubles the result, and taking a dama doubles it again. Energy is converted to money at <strong>₱{KWH_RATE} per kWh</strong>.
         </p>
         <div className="mt-2 rounded-card bg-surface p-4">
           <p className="mb-2 text-meta text-muted">Examples, as they appear in the ledger</p>
@@ -241,7 +320,7 @@ export default function Learn() {
                     <span className="text-ink">{p.left}</span> = {p.result}
                     {p.factors.length > 0 && <span className="text-faint"> · {p.factors.join(' · ')}</span>}
                   </span>
-                  {p.scored ? <span className="flex-none font-semibold text-accent">+₱{eq.points}</span> : <span className="flex-none text-meta text-faint">{p.reason}</span>}
+                  {p.scored ? <span className="flex-none font-semibold text-negative">+₱{eq.points}</span> : <span className="flex-none text-meta text-faint">{p.reason}</span>}
                 </li>
               );
             })}
@@ -275,10 +354,100 @@ export default function Learn() {
       <Section id="ending" title="How the game ends">
         <p>The game ends when a side has no chips, the side to move has no legal move, or the game clock runs out.</p>
         <p>
-          Every chip still on the board is then added to its owner's score: its value, doubled for a dama, and ×3 for a kWh chip.
-          The <strong>higher total wins</strong>, so a side can lose all its chips and still win on points.
+          Every chip still on the board is then added to its owner's score: its value, doubled for a dama, and ×{KWH_RATE} for a kWh chip.
+          The <strong>lower total wins</strong>, so a side can lose all its chips and still win on points.
         </p>
         <p>Running out of move time loses the game outright. You can also resign or agree a draw.</p>
+      </Section>
+
+      <Section id="grades" title="The other grades">
+        <p>
+          Each grade teaches a different science topic. The board, the moves, capture priority and the dama are the same in all of
+          them, and the <strong>lowest total still wins</strong>. Choose a grade when you create a room, join quick match, or start
+          a game on this device.
+        </p>
+      </Section>
+
+      <Section
+        id="grade-8"
+        title={gradeName(8)}
+        demo={
+          <Demo
+            grade={8}
+            specs={[
+              [2, 3, 'red', 'sci', 2.2e2],
+              [3, 4, 'blue', 'sci', 4.4e4],
+              [1, 4, 'blue', 'sci', 1.1e-1],
+              [7, 6, 'blue', 'sci', 3.3e-3],
+            ]}
+            caption="The 2.2 × 10² chip can capture either way. Tap it and compare the two landing squares."
+          />
+        }
+      >
+        <p>
+          Every chip is a number in scientific notation, from <MathText>1.111 × 10⁻¹¹</MathText> to <MathText>1.212 × 10¹²</MathText>. Odd-numbered chips have negative
+          exponents and even-numbered chips positive ones. There are no units to mismatch, so <strong>all four signs score</strong>,
+          and a subtraction below zero scores nothing. Your final score is everything you captured plus your chips left on the board.
+        </p>
+        <GradeChips grade={8} />
+        <GradeExamples grade={8} />
+        <p className="text-body text-muted">
+          The published rules do not explain how this grade scores, so these are Scidama Online's own rules. Numbers are kept in
+          full and rounded to five figures for display.
+        </p>
+      </Section>
+
+      <Section
+        id="grade-9"
+        title={gradeName(9)}
+        demo={
+          <Demo
+            grade={9}
+            specs={[
+              [0, 3, 'red', 'pct', 25],
+              [1, 4, 'blue', 'pct', 40],
+              [7, 6, 'blue', 'F', 70],
+            ]}
+            caption="Take the 40% chip. The + square makes 65%, and the table turns that into 91°F."
+          />
+        }
+      >
+        <p>
+          Chips are relative humidity (%) or temperature (°F). On a + or − square, two humidity chips make a humidity, and the table
+          below turns it into °F for your score. Two temperature chips add straight to your score. <strong>× and ÷ score nothing</strong>,
+          and neither do mixed units or a subtraction below zero.
+        </p>
+        <GradeChips grade={9} />
+        <GradeExamples grade={9} />
+        <ThiTable />
+        <p>Chips left on the board count the same way, each humidity chip looked up alone. Final totals are shown in °C as well.</p>
+      </Section>
+
+      <Section
+        id="grade-10"
+        title={gradeName(10)}
+        demo={
+          <Demo
+            grade={10}
+            specs={[
+              [2, 3, 'red', 'g', 37],
+              [3, 4, 'blue', 'C', 11],
+              [7, 6, 'blue', 'g', 3],
+            ]}
+            caption="Take the 11°C chip on the × square: grams times degrees goes in its own column."
+          />
+        }
+      >
+        <p>
+          Chips are mass (g) or temperature (°C). Like units add or subtract into their own column. Different units score only on
+          × , which goes in a third column, <strong>g·°C</strong>. Everything else scores nothing.
+        </p>
+        <GradeChips grade={10} />
+        <GradeExamples grade={10} />
+        <p>
+          At the end, chips left on the board join their columns, and your score is <strong>(total g × total °C) + total g·°C</strong>,
+          in calories. Your score reads 0 until you have both grams and °C, so watch the score sheet above the ledger.
+        </p>
       </Section>
 
       <Section id="online" title="Playing online">

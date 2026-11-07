@@ -11,14 +11,17 @@ import {
   yOf,
   type Cell,
   type GameState,
+  type Grade,
   type LegalStep,
   type Op,
   type Piece,
   type Side,
   type Step,
 } from '../../../../shared/engine.ts';
-import { chipLabel, OP_NAME, SIDE_NAME } from '../../../../shared/notation.ts';
+import { chipLabel, OP_NAME, previewText, SIDE_NAME } from '../../../../shared/notation.ts';
+import { boardColours } from '../../lib/grades.ts';
 import { usePrefs, type BoardTheme, type PieceSet } from '../../store/prefs.ts';
+import { MathText } from '../ui/MathText.tsx';
 import { Chip } from './Chip.tsx';
 
 export interface BoardMark {
@@ -35,6 +38,8 @@ export interface BoardProps {
   orientation: Side;
   /** Needed for legal moves when interactive. */
   state?: GameState;
+  /** Defaults to the grade of `state`, then Grade 7. */
+  grade?: Grade;
   interactive?: boolean;
   onStep?: (step: Step) => void;
   onIllegal?: () => void;
@@ -66,6 +71,7 @@ export const Board = memo(function Board(props: BoardProps) {
     board,
     orientation,
     state,
+    grade = state?.rules.grade ?? 7,
     interactive = false,
     onStep,
     onIllegal,
@@ -253,7 +259,7 @@ export const Board = memo(function Board(props: BoardProps) {
     <div
       ref={boardRef}
       data-ui
-      data-board={theme}
+      data-board={boardColours(theme, grade)}
       role="group"
       aria-label={label}
       onKeyDown={onKeyDown}
@@ -352,7 +358,7 @@ export const Board = memo(function Board(props: BoardProps) {
             .map((t) => (
               <div key={`pv-${t.to}`} className="absolute top-0 left-0 size-[12.5%]" style={chipStyle(t.to, orientation)}>
                 <div className="flex size-full items-end justify-center pb-[6%]">
-                  <CapturePreview step={t} board={board} />
+                  <CapturePreview step={t} board={board} grade={grade} />
                 </div>
               </div>
             ))}
@@ -411,17 +417,17 @@ function TargetMark({ step }: { step: LegalStep }) {
   );
 }
 
-function CapturePreview({ step, board }: { step: LegalStep; board: readonly Cell[] }) {
+function CapturePreview({ step, board, grade }: { step: LegalStep; board: readonly Cell[]; grade: Grade }) {
   const attacker = board[step.from];
   const captured = step.capture !== null ? board[step.capture] : null;
   if (!attacker || !captured) return null;
-  const eq = scoreCapture(attacker, captured, OPERATORS[step.to]!);
+  const eq = scoreCapture(attacker, captured, OPERATORS[step.to]!, grade);
   const scored = eq.base !== null;
   return (
     <span
-      className={`rounded-full px-1.5 text-[11px] leading-[16px] font-semibold whitespace-nowrap ${scored ? 'bg-accent text-accent-ink' : 'bg-black/70 text-white'}`}
+      className={`rounded-full px-1.5 text-[11px] leading-[16px] font-semibold whitespace-nowrap ${scored ? 'bg-negative-bg text-negative' : 'bg-black/70 text-white'}`}
     >
-      {scored ? `+₱${eq.points}` : 'NS'}
+      <MathText>{previewText(eq)}</MathText>
     </span>
   );
 }

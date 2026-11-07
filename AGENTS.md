@@ -1,6 +1,7 @@
 # AGENTS.md — rules for agents working in this repo
 
-Scidama Online: a real-time, two-player math-checkers game (Damath variant with ₱/kWh units). Read this
+Scidama Online: a real-time, two-player math-checkers game (a Damath variant in four grades, each with its
+own units and scoring: `GRADES` in `shared/engine.ts`). Read this
 file first, then [`DESIGN.md`](DESIGN.md) before any UI work and [`docs/RULES.md`](docs/RULES.md) before
 any game-logic work.
 
@@ -31,12 +32,12 @@ npm run check       # typecheck + test + build — run before you say you're don
 ## Layout
 
 ```
-shared/   engine.ts (rules), bot.ts, protocol.ts (socket/REST types), presets.ts, rating.ts, codec.ts
+shared/   engine.ts (rules, GRADES), bot.ts, notation.ts (all number formats), protocol.ts (socket/REST types), presets.ts, rating.ts, codec.ts
 server/   index.ts (entry) → app.ts (createServer), db.ts, auth.ts, http.ts, rooms.ts, matchmaking.ts, sockets.ts
 client/   index.html, public/ (sfx, classic piece art), src/{pages,components,lib,store,styles}
 e2e/      browser end-to-end test (screenshots land in e2e/artifacts/, git-ignored)
 scripts/  seed-demo.ts — local demo data
-docs/     RULES, ANALYSIS, IMPLEMENTATION_PLAN, CHAIN_PROMPTS, REVIEW_NOTES
+docs/     RULES, SCIDAMA_VERSIONS, ANALYSIS, IMPLEMENTATION_PLAN, CHAIN_PROMPTS, REVIEW_NOTES, DATABASE_PLAN, GRADES_PLAN
 ```
 
 ## Hard rules

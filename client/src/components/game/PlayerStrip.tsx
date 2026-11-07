@@ -1,9 +1,11 @@
 import { Link } from 'react-router';
-import type { Side } from '../../../../shared/engine.ts';
+import type { Grade, Side } from '../../../../shared/engine.ts';
+import { shortScore } from '../../../../shared/notation.ts';
 import { Avatar } from '../ui/Avatar.tsx';
+import { MathText } from '../ui/MathText.tsx';
 import { SideDot } from '../ui/controls.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { clock, peso } from '../../lib/format.ts';
+import { clock } from '../../lib/format.ts';
 
 export interface PlayerInfo {
   id?: string;
@@ -19,6 +21,7 @@ export interface PlayerInfo {
 interface Props {
   side: Side;
   player: PlayerInfo | null;
+  grade: Grade;
   score: number;
   toMove: boolean;
   /** Remaining move time in ms for the side to move, or null. */
@@ -29,7 +32,7 @@ interface Props {
   over: boolean;
 }
 
-export function PlayerStrip({ side, player, score, toMove, moveLeft, moveSeconds, now, over }: Props) {
+export function PlayerStrip({ side, player, grade, score, toMove, moveLeft, moveSeconds, now, over }: Props) {
   const active = toMove && !over;
   const low = active && moveLeft !== null && moveLeft < 10_000;
   const away = player && player.connected === false;
@@ -66,8 +69,8 @@ export function PlayerStrip({ side, player, score, toMove, moveLeft, moveSeconds
           )}
         </p>
       </div>
-      <div className="text-right">
-        <p className="num text-figure font-semibold">{peso(score)}</p>
+      <div className="flex-none text-right">
+        <p className={`num font-semibold ${grade === 7 ? 'text-figure' : 'text-card'}`}><MathText>{shortScore(score, grade)}</MathText></p>
       </div>
       {moveSeconds > 0 && (
         <div

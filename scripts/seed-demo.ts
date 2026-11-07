@@ -5,7 +5,7 @@
 //   npm run dev            # in one terminal
 //   npm run seed           # in another (or: node scripts/seed-demo.ts http://localhost:5500)
 import { io, type Socket } from 'socket.io-client';
-import { legalSteps, type GameState } from '../shared/engine.ts';
+import { GRADE_IDS, legalSteps, type GameState, type Grade } from '../shared/engine.ts';
 import type { AckResult, ClientToServerEvents, RoomSnapshot, ServerToClientEvents, SessionResponse } from '../shared/protocol.ts';
 
 const base = process.argv[2] ?? 'http://localhost:5500';
@@ -46,8 +46,11 @@ async function player(name: string): Promise<Player> {
 let seed = 7;
 const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 
+let games = 0;
+const nextGrade = (): Grade => GRADE_IDS[games++ % GRADE_IDS.length];
+
 async function game(red: Player, blue: Player, opts: { finish: boolean; steps?: number }) {
-  const created = await ack(red, 'room:create', { visibility: 'public', settings: { hostSide: 'red', gameMinutes: 0, moveSeconds: 0, rated: true } });
+  const created = await ack(red, 'room:create', { visibility: 'public', settings: { grade: nextGrade(), hostSide: 'red', gameMinutes: 0, moveSeconds: 0, rated: true } });
   if (!created.ok || !created.code) throw new Error(created.ok ? 'no code' : created.message);
   await ack(blue, 'room:join', { code: created.code, as: 'player' });
   await ack(red, 'room:start');
@@ -74,6 +77,6 @@ for (const [a, b] of [[0, 1], [2, 3], [0, 2], [1, 3], [4, 5], [0, 4], [6, 7], [2
 }
 await game(players[0], players[1], { finish: false, steps: 14 });
 await game(players[2], players[3], { finish: false, steps: 9 });
-await ack(players[4], 'room:create', { visibility: 'public', settings: { gameMinutes: 20, moveSeconds: 60, rated: true } });
-await ack(players[6], 'room:create', { visibility: 'public', settings: { gameMinutes: 10, moveSeconds: 30, hostSide: 'blue', maxCapture: true } });
+await ack(players[4], 'room:create', { visibility: 'public', settings: { grade: 9, gameMinutes: 20, moveSeconds: 60, rated: true } });
+await ack(players[6], 'room:create', { visibility: 'public', settings: { grade: 10, gameMinutes: 10, moveSeconds: 30, hostSide: 'blue' } });
 console.log(`Seeded ${base}: 9 finished games, 2 live games, 2 open rooms. Ctrl+C to stop.`);

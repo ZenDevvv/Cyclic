@@ -11,12 +11,13 @@ Each item says what was decided, why, and where to change it. **Open questions**
    *Change:* `server/rooms.ts` → `step()` calls `resetMoveClock`.
 3. **Game clock expiry = game ends and scores decide** (remaining chips tallied for both), matching
    Damath's 20-minute game. *Change:* `onGameTimeout`.
-4. **The higher final score wins**, even if the winner was eliminated — Damath scoring. The original also
-   compared scores (but inverted). *Change:* `shared/engine.ts` → `endGame`.
+4. **The lower final score wins**, even if the winner was eliminated. Changed on 2026-11-07: this was "higher
+   wins", the plain Damath rule, but every Sci-Dama source says lower (`SCIDAMA_VERSIONS.md`). To reverse: flip the
+   comparison in `endGame`, and `evaluate` and `order` in `shared/bot.ts`.
 5. **Negative subtraction scores 0** (kept from the original). Official integer Damath lets it go
    negative. *Change:* `scoreCapture`.
-6. **"Take the most chips" is a room option, off by default** (the original did not enforce it; official
-   Damath does). Quick matches use the default (off).
+6. **"Take the most chips" is on by default**, with dama priority, and a host can turn it off. Changed on
+   2026-11-07, because the sources require it. To reverse: `DEFAULT_RULES` and `DEFAULT_ROOM_SETTINGS`.
 7. **Captured chips leave the board immediately** in a multi-capture (original behaviour; tournament
    draughts removes them at the end of the sequence).
 8. **A blocked side ends the game** (the original never checked); remaining chips tallied, score decides.
@@ -116,13 +117,41 @@ Each item says what was decided, why, and where to change it. **Open questions**
 - Puzzles ("find the best capture") built from saved games.
 - A light theme.
 
+## Decisions from the grades work (2026-11-07)
+
+- **kWh rate is ₱5,** up from ₱3, matching the sample sheet. It depends on the game maker, so a room setting comes
+  later. To change it now: `KWH_RATE` in `shared/engine.ts`.
+- **Auto-capture is on by default.** The owner chose this; a host can turn it off per room. A capture plays itself
+  only when it is the single legal step, so no decision is taken from anyone. To reverse: `autoCapture` in
+  `DEFAULT_ROOM_SETTINGS`, and in `client/src/store/prefs.ts` for offline games.
+- **The bot lost its dama bonus.** Damas now count against a side through the tally, and the medium and hard levels
+  each won 40 of 40 games against random play. The easy level won 24 of 40.
+- **The bot compares score gaps by order of magnitude,** because they run from ₱1 to 10²⁴ across the grades. The
+  order of positions does not change, and a won game always outranks a lead. Results are in `GRADES_PLAN.md`.
+
+- **One queue per grade and time control,** because two grades cannot share a game. With few players this can mean
+  a long wait; the owner accepted that. To offer fewer: limit the grades passed to `queue:join`.
+- **One rating across all grades,** so a player's rating is not split while the player base is small. To separate
+  them: add a rating per grade, and pair on it in `server/matchmaking.ts`.
+
+- **Profile no longer shows best and average final score.** Lower wins now, and a player's games can be in different
+  units, so neither figure meant anything. To bring them back: compare within one grade in `pages/Profile.tsx`.
+- **The title screen stays Grade 7.** Its demo, copy and "Play from here" are all Electro.
+
 ## Open questions for you
 
 1. **Negative scores:** keep "below zero scores nothing", or score negatives like integer Damath?
 2. **Running out of move time:** keep "loses the game", or auto-play a move / give a strike first?
 3. **Privacy of results:** should games from invite-only rooms be hidden from profiles and the lobby's
    "just finished" list?
-4. **Hosting:** Render as before? If so, with a persistent disk, or should the DB move to Postgres?
+4. **Hosting:** parked. Stay on Render free and move the DB to Neon free Postgres; see `DATABASE_PLAN.md`.
 5. **Identity:** are guest accounts plus optional passwords enough, or do you want email / Google sign-in?
 6. **Language:** add a Tagalog translation for students?
 7. **Name:** the product is called Scidama in the UI and the repo is Cyclic — keep both?
+8. **Grade 8's big swings:** one forced capture can decide a game. In 40 games between equal bots, the capture behind
+   the loser's biggest score was the only legal move in 31 of the 37 it decided. Scoring here is our own rule, so it
+   can change, but play more before changing it. To soften it: edit `capture` in `SCIENTIFIC_NOTATION`.
+9. **Grade 10's empty column:** the final multiplies g by °C, so a side with no grams scores almost nothing. In 40
+   games between equal bots, 33 sides finished with an empty column and 30 of them won, 12 on exactly 0 calories. This
+   is the published formula, so it stays unless a teacher says otherwise.
+10. **Easy bot:** it plays about even with a random player in every grade. Should it be stronger?

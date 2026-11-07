@@ -1,9 +1,20 @@
 # Scidama Online (Cyclic)
 
 Real-time, two-player **math checkers with units**. Scidama is a science variant of Damath, the Filipino
-math checkers: every chip is a quantity in pesos (₱2–₱12) or kilowatt-hours (1–11 kWh), every playable
-square carries + − × ÷, and a capture scores only when the arithmetic still makes a quantity:
-`₱8 + ₱4 = ₱12` scores, `₱8 × ₱4` and `₱8 + 3 kWh` don't. Full rules: [`docs/RULES.md`](docs/RULES.md).
+math checkers: every chip is a quantity, every playable square carries + − × ÷, and the lowest total wins.
+Grade 7, Electro, uses pesos (₱2–₱12) and kilowatt-hours (1–11 kWh), and a capture scores only when the
+arithmetic still makes a quantity: `₱8 + ₱4 = ₱12` scores, `₱8 × ₱4` and `₱8 + 3 kWh` don't.
+
+Four grades share the board and the moves, each with its own chips, scoring and board colours:
+
+| Grade | Version | Chips | Final score |
+| --- | --- | --- | --- |
+| 7 | Electro | ₱ and kWh | Pesos, at ₱5 per kWh |
+| 8 | Scientific Notation | `1.1 × 10⁻¹` to `1.212 × 10¹²` | The sum, in scientific notation |
+| 9 | THI | % humidity and °F | °F through the THI table, shown in °C too |
+| 10 | Thermo | g and °C | (total g × total °C) + total g·°C, in calories |
+
+Full rules: [`docs/RULES.md`](docs/RULES.md). Sources and open gaps: [`docs/SCIDAMA_VERSIONS.md`](docs/SCIDAMA_VERSIONS.md).
 
 ## Features
 
@@ -13,7 +24,7 @@ square carries + − × ÷, and a capture scores only when the arithmetic still 
 
 - **Play online**: quick match by rating (Blitz / Standard / Long), or rooms you create — invite-only with a
   link and 6-character code, or listed in the lobby. Host picks the clocks, sides, rated or casual,
-  spectators, and the tournament "take the most chips" rule.
+  spectators, the grade, the "take the most chips" rule, and auto-capture for forced moves.
 - **Server-authoritative games** with a shared, tested rules engine; server clocks (game clock + move
   clock); resign, draw offers, rematch with side swap; reconnect within 90 s after a dropped connection
   or a reload.

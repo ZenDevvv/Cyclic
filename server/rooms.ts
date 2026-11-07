@@ -4,17 +4,20 @@ import { randomInt } from 'node:crypto';
 import {
   applyStep,
   endGame,
+  forcedStep,
   IllegalStepError,
   initialState,
   other,
   type EndReason,
   type GameState,
+  type Grade,
   type Side,
   type Step,
   type StepRecord,
 } from '../shared/engine.ts';
 import { encodeBoard } from '../shared/codec.ts';
 import {
+  AUTO_CAPTURE_MS,
   DEFAULT_ROOM_SETTINGS,
   PRESETS,
   RECONNECT_GRACE_SECONDS,
@@ -31,6 +34,7 @@ import type {
   LiveGame,
   LobbyState,
   OpenRoom,
+  QueueCounts,
   RatingChange,
   RoomMode,
   RoomPhase,
@@ -99,7 +103,7 @@ interface Room {
   chat: ChatMessage[];
   createdAt: number;
   endedAt: number | null;
-  timers: { move?: NodeJS.Timeout; game?: NodeJS.Timeout; forfeit: Partial<Record<Side, NodeJS.Timeout>> };
+  timers: { move?: NodeJS.Timeout; game?: NodeJS.Timeout; forced?: NodeJS.Timeout; forfeit: Partial<Record<Side, NodeJS.Timeout>> };
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -175,7 +179,7 @@ export class RoomManager {
     return { online: online.size, playing };
   }
 
-  lobbyState(queue: Record<PresetId, number>): LobbyState {
+  lobbyState(queue: QueueCounts): LobbyState {
     const open: OpenRoom[] = [];
     const live: LiveGame[] = [];
     for (const room of this.rooms.values()) {
@@ -201,7 +205,7 @@ export class RoomManager {
           settings: room.settings,
           scores: room.game.state.scores,
           turn: room.game.state.turn,
-          board: encodeBoard(room.game.state.board),
+          board: encodeBoard(room.game.state.board, room.settings.grade),
           spectators: room.watchers.size,
           startedAt: room.game.startedAt,
         });
@@ -342,10 +346,11 @@ export class RoomManager {
   }
 
   /** Matchmaking: a rated public room that starts at once. */
-  createQuick(a: UserSummary, b: UserSummary, preset: PresetId): Room {
+  createQuick(a: UserSummary, b: UserSummary, preset: PresetId, grade: Grade): Room {
     const p = PRESETS[preset];
     const settings: RoomSettings = {
       ...DEFAULT_ROOM_SETTINGS,
+      grade,
       gameMinutes: p.gameMinutes,
       moveSeconds: p.moveSeconds,
       rated: true,
@@ -484,7 +489,7 @@ export class RoomManager {
     room.phase = 'playing';
     room.endedAt = null;
     room.game = {
-      state: initialState({ maxCapture: room.settings.maxCapture }),
+      state: initialState({ grade: room.settings.grade, maxCapture: room.settings.maxCapture }),
       records: [],
       steps: [],
       startedAt: now,
@@ -532,18 +537,40 @@ export class RoomManager {
       if (err instanceof IllegalStepError) throw new RoomError('illegal', 'That move is not allowed.');
       throw err;
     }
+    if (game.drawOfferBy && game.drawOfferBy !== side) game.drawOfferBy = null; // moving declines
+    this.commit(room, game, step, applied);
+  }
+
+  private commit(room: Room, game: LiveGameState, step: Step, applied: ReturnType<typeof applyStep>): void {
+    if (room.timers.forced) clearTimeout(room.timers.forced);
+    delete room.timers.forced;
     game.state = applied.state;
     game.records.push(applied.record);
     game.steps.push({ from: step.from, to: step.to });
     game.lastStep = applied.record;
-    if (game.drawOfferBy && game.drawOfferBy !== side) game.drawOfferBy = null; // moving declines
     if (game.state.result) {
       this.finish(room, game.state);
       return;
     }
     this.resetMoveClock(room);
+    this.scheduleForced(room, game);
     this.broadcast(room);
     this.scheduleLobby();
+  }
+
+  /** A capture that is the only legal step plays itself after a pause, so players can see it coming. */
+  private scheduleForced(room: Room, game: LiveGameState): void {
+    if (!room.settings.autoCapture || !forcedStep(game.state)) return;
+    room.timers.forced = setTimeout(() => this.onForced(room, game), AUTO_CAPTURE_MS * this.timeScale);
+  }
+
+  private onForced(room: Room, game: LiveGameState): void {
+    delete room.timers.forced;
+    const forced = forcedStep(game.state);
+    if (!forced) return;
+    // Not the player's own move, so unlike step() it leaves a draw offer standing.
+    const step = { from: forced.from, to: forced.to };
+    this.commit(room, game, step, applyStep(game.state, step));
   }
 
   resign(socket: IOSocket): void {
@@ -701,6 +728,7 @@ export class RoomManager {
   private clearTimers(room: Room): void {
     if (room.timers.move) clearTimeout(room.timers.move);
     if (room.timers.game) clearTimeout(room.timers.game);
+    if (room.timers.forced) clearTimeout(room.timers.forced);
     for (const t of Object.values(room.timers.forfeit)) clearTimeout(t);
     room.timers = { forfeit: {} };
   }

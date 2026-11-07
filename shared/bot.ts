@@ -3,7 +3,7 @@ import {
   applyLegalStep,
   legalSteps,
   other,
-  remainingTally,
+  projectedFinals,
   yOf,
   type GameState,
   type Side,
@@ -42,25 +42,33 @@ export function turnsFrom(state: GameState): Turn[] {
 }
 
 const WIN = 100_000;
+/** A nudge forward per row: a tie-break, smaller than any real score gap. */
+const ADVANCE = 0.001;
+/** How close two turns must be for the bot to treat them as equal and pick at random. */
+const TIE: Record<BotLevel, number> = { easy: 0, medium: 0.02, hard: 0.0001 };
 
-/** Static evaluation from `side`'s point of view, in pesos. */
+/**
+ * Score gaps run from ₱1 in Grade 7 to 10²⁴ in Grade 8, so they are compared by order of magnitude.
+ * The order never changes, so better is still better, and a won game (WIN) always outranks any lead.
+ */
+const scaled = (gap: number): number => Math.sign(gap) * Math.log10(1 + Math.abs(gap));
+
+/** Static evaluation from `side`'s point of view. The lower final score wins, so higher here is better. */
 export function evaluate(state: GameState, side: Side): number {
   if (state.result) {
     const { winner } = state.result;
     if (winner === null) return 0;
     return winner === side ? WIN : -WIN;
   }
-  const tally = remainingTally(state.board);
-  const opp = other(side);
-  // Projected final score difference: captured points plus chips still standing.
-  let score = state.scores[side] + tally[side].total - (state.scores[opp] + tally[opp].total);
-  // Small positional terms: advance toward crowning, keep damas.
+  // Projected final score difference: captured points plus chips still standing count against a side.
+  // The tally already doubles a dama, so a crown needs no bonus of its own.
+  const final = projectedFinals(state);
+  let score = scaled(final[other(side)] - final[side]);
+  // A small nudge forward keeps games moving when the scores are level.
   for (let i = 0; i < 64; i++) {
     const p = state.board[i];
-    if (!p) continue;
-    const sign = p.side === side ? 1 : -1;
-    if (p.king) score += sign * 6;
-    else score += sign * 0.6 * (p.side === 'red' ? yOf(i) : 7 - yOf(i));
+    if (!p || p.king) continue;
+    score += (p.side === side ? 1 : -1) * ADVANCE * (p.side === 'red' ? yOf(i) : 7 - yOf(i));
   }
   return score;
 }
@@ -90,9 +98,9 @@ function negamax(state: GameState, depth: number, alpha: number, beta: number, c
   return best;
 }
 
-/** Captures and big immediate gains first, which makes alpha-beta cut far more. */
+/** Long captures and cheap turns first, which makes alpha-beta cut far more. */
 function order(turns: Turn[], side: Side): void {
-  const gain = (t: Turn) => t.state.scores[side] * 4 + t.steps.length * 3;
+  const gain = (t: Turn) => t.steps.length * 3 - t.state.scores[side] * 4;
   turns.sort((a, b) => gain(b) - gain(a));
 }
 
@@ -130,6 +138,6 @@ export function chooseTurn(state: GameState, level: BotLevel, opts: ChooseOption
     return pool[Math.floor(rng() * pool.length)].t.steps;
   }
   // Break ties randomly so games differ.
-  const top = scored.filter((s) => s.v >= scored[0].v - (level === 'medium' ? 1 : 0.01));
+  const top = scored.filter((s) => s.v >= scored[0].v - TIE[level]);
   return top[Math.floor(rng() * top.length)].t.steps;
 }

@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import {
   applyStep,
   countPieces,
+  DEFAULT_RULES,
   endGame,
+  forcedStep,
+  GRADES,
   IllegalStepError,
   initialState,
   legalSteps,
   mustCaptureSquares,
   OPERATORS,
+  piecePoints,
   PLAYABLE,
   replay,
   scoreCapture,
@@ -36,6 +40,9 @@ function make(specs: Spec[], turn: Side = 'red', rules: Partial<Rules> = {}): Ga
 
 const steps = (s: GameState) => legalSteps(s).map((m) => `${m.from}>${m.to}${m.capture !== null ? 'x' + m.capture : ''}`).sort();
 const piece = (unit: Unit, value: number, king = false, side: Side = 'red'): Piece => ({ id: 'x', side, unit, value, king });
+
+/** A position where each side has already scored this many pesos. */
+const scored = (s: GameState, scores: Record<Side, number>): GameState => ({ ...s, scores, columns: { red: { P: scores.red }, blue: { P: scores.blue } } });
 
 test('initial layout: 12 chips each, on playable squares, red moves first', () => {
   const s = initialState();
@@ -171,15 +178,30 @@ test('scoring table: like units add and subtract; × and ÷ and mixed units scor
   assert.equal(scoreCapture(piece('kWh', 3), piece('P', 8), 'sub').points, 0);
 });
 
-test('scoring multipliers: dama ×2 each side, kWh converted at ₱3', () => {
-  assert.equal(scoreCapture(piece('kWh', 5), piece('kWh', 3), 'add').points, 24); // 8 kWh × 3
+test('scoring multipliers: dama ×2 each side, kWh converted at ₱5', () => {
+  assert.equal(scoreCapture(piece('kWh', 5), piece('kWh', 3), 'add').points, 40); // 8 kWh × 5
   assert.equal(scoreCapture(piece('P', 8, true), piece('P', 4), 'add').points, 24);
   assert.equal(scoreCapture(piece('P', 8), piece('P', 4, true), 'add').points, 24);
   assert.equal(scoreCapture(piece('P', 8, true), piece('P', 4, true), 'add').points, 48);
-  assert.equal(scoreCapture(piece('kWh', 9, true), piece('kWh', 1, true), 'sub').points, 8 * 4 * 3);
+  assert.equal(scoreCapture(piece('kWh', 9, true), piece('kWh', 1, true), 'sub').points, 8 * 4 * 5);
   assert.equal(equationText(scoreCapture(piece('P', 8, true), piece('P', 4), 'add')), '₱8 + ₱4 = ₱12 · ×2 dama = ₱24');
   assert.equal(equationText(scoreCapture(piece('kWh', 5), piece('kWh', 3), 'mul')), '5 kWh × 3 kWh = NS');
-  assert.equal(equationText(scoreCapture(piece('kWh', 5), piece('kWh', 3), 'add')), '5 kWh + 3 kWh = 8 kWh · ×3 ₱/kWh = ₱24');
+  assert.equal(equationText(scoreCapture(piece('kWh', 5), piece('kWh', 3), 'add')), '5 kWh + 3 kWh = 8 kWh · ×5 ₱/kWh = ₱40');
+});
+
+test('the Electro sample score sheet comes to ₱126', () => {
+  const scored = [
+    scoreCapture(piece('kWh', 7), piece('kWh', 1), 'add'),
+    scoreCapture(piece('kWh', 5), piece('kWh', 1), 'sub'),
+    scoreCapture(piece('kWh', 7), piece('kWh', 11), 'sub'), // NS
+    scoreCapture(piece('kWh', 3), piece('kWh', 3), 'mul'), // NS
+    scoreCapture(piece('P', 2), piece('P', 10), 'add'),
+    scoreCapture(piece('P', 12), piece('P', 6), 'sub'),
+    scoreCapture(piece('P', 10), piece('P', 4), 'mul'), // NS
+    scoreCapture(piece('P', 12), piece('P', 2), 'div'), // NS
+  ].reduce((sum, eq) => sum + eq.points, 0);
+  const remaining = [piece('kWh', 5), piece('kWh', 1), piece('P', 2), piece('P', 6), piece('P', 10)].reduce((sum, p) => sum + piecePoints(p), 0);
+  assert.equal(scored + remaining, 126);
 });
 
 test('a capture adds its points to the capturing side', () => {
@@ -191,7 +213,7 @@ test('a capture adds its points to the capturing side', () => {
   assert.deepEqual(state.scores, { red: 2, blue: 0 });
 });
 
-test('elimination ends the game; remaining chips are tallied and the higher score wins', () => {
+test('elimination ends the game; remaining chips are tallied and the lower score wins', () => {
   // Red ₱2 takes blue's last chip (a ₱12 dama) landing on ÷, which scores nothing.
   const s = make([[4, 3, 'red', 'P', 2], [5, 4, 'blue', 'P', 12, true]]);
   assert.equal(OPERATORS[sq(6, 5)], 'div');
@@ -200,14 +222,17 @@ test('elimination ends the game; remaining chips are tallied and the higher scor
   assert.equal(res.reason, 'elimination');
   assert.equal(res.tally.red.total, 2);
   assert.equal(res.final.red, 0 + 2);
-  assert.equal(res.winner, 'red');
+  assert.equal(res.final.blue, 0);
+  assert.equal(res.winner, 'blue', 'the side that lost every chip finished lower');
   assert.deepEqual(legalSteps(r.state), []);
 });
 
-test('score decides even when the eliminated side scored more', () => {
-  const s = { ...make([[4, 3, 'red', 'P', 2], [5, 4, 'blue', 'P', 4]]), scores: { red: 0, blue: 50 } };
-  const r = applyStep(s, { from: sq(4, 3), to: sq(6, 5) });
-  assert.equal(r.state.result?.winner, 'blue');
+test('score decides, whoever was eliminated', () => {
+  const board = make([[4, 3, 'red', 'P', 2], [5, 4, 'blue', 'P', 4]]);
+  const end = (scores: Record<Side, number>) => applyStep(scored(board, scores), { from: sq(4, 3), to: sq(6, 5) }).state.result;
+  assert.equal(end({ red: 0, blue: 50 })?.winner, 'red', 'the eliminated side scored more, so it loses');
+  assert.equal(end({ red: 50, blue: 0 })?.winner, 'blue', 'the eliminated side scored less, so it wins');
+  assert.equal(end({ red: 0, blue: 2 })?.winner, null, 'level finals are a draw');
 });
 
 test('a side with no legal move ends the game (blocked)', () => {
@@ -222,16 +247,16 @@ test('a side with no legal move ends the game (blocked)', () => {
   assert.equal(r.state.result?.reason, 'blocked');
   assert.equal(r.state.result?.final.red, 12 + 8);
   assert.equal(r.state.result?.final.blue, 2);
-  assert.equal(r.state.result?.winner, 'red');
+  assert.equal(r.state.result?.winner, 'blue');
 });
 
 test('endGame: timeout and resign take a winner, agreement is a draw, time is by score', () => {
-  const s = { ...initialState(), scores: { red: 10, blue: 0 } };
+  const s = scored(initialState(), { red: 10, blue: 0 });
   assert.equal(endGame(s, 'timeout', 'blue').result?.winner, 'blue');
   assert.equal(endGame(s, 'agreement').result?.winner, null);
   const t = endGame(s, 'time').result!;
   assert.equal(t.tally.red.total, t.tally.blue.total); // symmetric start
-  assert.equal(t.winner, 'red');
+  assert.equal(t.winner, 'blue', 'red scored more, so blue wins on time');
   const level = endGame(initialState(), 'time').result!;
   assert.equal(level.winner, null);
   assert.equal(endGame(endGame(s, 'resign', 'red'), 'resign', 'blue').result?.winner, 'red', 'first result sticks');
@@ -246,10 +271,171 @@ test('maxCapture rule keeps only the longest sequences', () => {
     [6, 5, 'blue', 'P', 10],
     [0, 7, 'blue', 'P', 12],
   ];
-  const free = make(specs);
+  const free = make(specs, 'red', { maxCapture: false });
   assert.equal(new Set(legalSteps(free).map((m) => m.from)).size, 2);
-  const strict = make(specs, 'red', { maxCapture: true });
-  assert.deepEqual(steps(strict), [`${sq(5, 2)}>${sq(7, 4)}x${sq(6, 3)}`]);
+  assert.deepEqual(steps(make(specs)), [`${sq(5, 2)}>${sq(7, 4)}x${sq(6, 3)}`], 'on by default');
+});
+
+test('grade table: Grade 7 is the default, with twelve different chips', () => {
+  assert.equal(DEFAULT_RULES.grade, 7);
+  assert.equal(initialState().rules.grade, 7);
+  assert.equal(GRADES[7].name, 'Electro');
+  assert.equal(GRADES[7].chips.length, 12);
+  assert.equal(new Set(GRADES[7].chips.map((c) => `${c.unit}${c.value}`)).size, 12);
+});
+
+test('every chip number starts on the square the published boards give it', () => {
+  const red = ['(0,1)', '(5,2)', '(7,0)', '(2,1)', '(7,2)', '(5,0)', '(3,2)', '(6,1)', '(3,0)', '(1,2)', '(4,1)', '(1,0)'];
+  const blue = ['(7,6)', '(2,5)', '(0,7)', '(5,6)', '(0,5)', '(2,7)', '(4,5)', '(1,6)', '(4,7)', '(6,5)', '(3,6)', '(6,7)'];
+  const { board } = initialState();
+  GRADES[7].chips.forEach(({ unit, value }, n) => {
+    const at = (side: Side) => {
+      const square = board.findIndex((p) => p?.side === side && p.unit === unit && p.value === value);
+      return `(${square % 8},${yOf(square)})`;
+    };
+    assert.equal(at('red'), red[n], `red chip ${n + 1}`);
+    assert.equal(at('blue'), blue[n], `blue chip ${n + 1}`);
+  });
+});
+
+test('score sheet: a capture goes in its own column, and the score is always the sheet\'s total', () => {
+  const kwh = applyStep(make([[2, 3, 'red', 'kWh', 5], [3, 4, 'blue', 'kWh', 3], [7, 6, 'blue', 'P', 2]]), { from: sq(2, 3), to: sq(4, 5) });
+  assert.equal(kwh.record.op, 'mul');
+  assert.deepEqual(kwh.state.columns, { red: {}, blue: {} }, 'NS writes nothing');
+
+  const add = applyStep(make([[0, 3, 'red', 'kWh', 5], [1, 4, 'blue', 'kWh', 3], [7, 6, 'blue', 'P', 2]]), { from: sq(0, 3), to: sq(2, 5) });
+  assert.equal(add.record.op, 'add');
+  assert.deepEqual(add.state.columns.red, { kWh: 8 });
+  assert.equal(add.state.scores.red, 40);
+  assert.equal(add.record.equation?.column, 'kWh');
+  assert.equal(add.record.equation?.amount, 8);
+  assert.equal(add.record.equation?.points, 40);
+
+  const pesos = applyStep(scored(make([[2, 3, 'red', 'P', 8], [1, 4, 'blue', 'P', 6], [7, 6, 'blue', 'P', 2]]), { red: 10, blue: 0 }), { from: sq(2, 3), to: sq(0, 5) });
+  assert.deepEqual(pesos.state.columns.red, { P: 12 }, 'added to what the sheet already had');
+  assert.equal(pesos.state.scores.red, 12);
+});
+
+test('score sheet: a dama\'s factors go in the column, not just the score', () => {
+  const eq = scoreCapture(piece('kWh', 5, true), piece('kWh', 3, true), 'add');
+  assert.equal(eq.base, 8);
+  assert.equal(eq.kingFactor, 4);
+  assert.equal(eq.amount, 32);
+  assert.equal(eq.points, 160);
+  const ns = scoreCapture(piece('P', 8, true), piece('kWh', 3), 'add');
+  assert.equal(ns.base, null);
+  assert.equal(ns.amount, 0);
+  assert.equal(ns.points, 0);
+});
+
+test('remaining chips join the sheet: the Electro sample comes to ₱126 through the engine', () => {
+  const s = make([
+    [0, 1, 'red', 'kWh', 5],
+    [2, 1, 'red', 'kWh', 1],
+    [4, 1, 'red', 'P', 2],
+    [6, 1, 'red', 'P', 6],
+    [1, 2, 'red', 'P', 10],
+    [7, 6, 'blue', 'P', 2],
+  ]);
+  const over = endGame({ ...s, columns: { red: { kWh: 12, P: 18 }, blue: {} }, scores: { red: 78, blue: 0 } }, 'time');
+  assert.deepEqual(over.result?.tally.red.columns, { kWh: 6, P: 18 });
+  assert.equal(over.result?.tally.red.total, 48);
+  assert.equal(over.result?.final.red, 126);
+  assert.equal(over.result?.final.blue, 2);
+});
+
+test('remaining chips: a dama counts double in its column', () => {
+  const tally = endGame(make([[0, 1, 'red', 'kWh', 5, true], [7, 6, 'blue', 'P', 4, true]]), 'time').result!.tally;
+  assert.deepEqual(tally.red.columns, { kWh: 10 });
+  assert.equal(tally.red.items[0].points, 50);
+  assert.deepEqual(tally.blue.columns, { P: 8 });
+  assert.equal(piecePoints(piece('kWh', 5, true)), 50);
+});
+
+test('replay and initialState carry the grade', () => {
+  assert.equal(replay([], { grade: 7, maxCapture: false }).state.rules.grade, 7);
+  assert.equal(replay([], { maxCapture: false }).state.rules.maxCapture, false);
+});
+
+test('the most-chips rule is on by default', () => {
+  assert.equal(DEFAULT_RULES.maxCapture, true);
+  assert.equal(initialState().rules.maxCapture, true);
+  assert.equal(initialState({ maxCapture: false }).rules.maxCapture, false);
+});
+
+test('capture priority: on equal counts a dama goes before a chip', () => {
+  const specs: Spec[] = [
+    [0, 1, 'red', 'P', 2], // chip takes one
+    [7, 2, 'red', 'P', 4, true], // dama takes one
+    [1, 2, 'blue', 'P', 6],
+    [5, 4, 'blue', 'P', 8],
+    [0, 7, 'blue', 'P', 12],
+  ];
+  assert.deepEqual([...new Set(legalSteps(make(specs)).map((m) => m.from))], [sq(7, 2)]);
+  const free = make(specs, 'red', { maxCapture: false });
+  assert.deepEqual([...new Set(legalSteps(free).map((m) => m.from))].sort((a, b) => a - b), [sq(0, 1), sq(7, 2)]);
+});
+
+// The dama on (7,4) can take (6,5) and then nothing: (2,3) stops it jumping (3,4) afterwards.
+const twoOverOne = (king: boolean): Spec[] => [
+  [2, 1, 'red', 'P', 4, king], // takes (3,2), then (3,4)
+  [7, 4, 'red', 'P', 2, true],
+  [3, 2, 'blue', 'P', 6],
+  [3, 4, 'blue', 'P', 8],
+  [2, 3, 'blue', 'P', 12],
+  [6, 5, 'blue', 'P', 10],
+];
+
+test('capture priority: a chip taking two beats a dama taking one', () => {
+  assert.deepEqual([...new Set(legalSteps(make(twoOverOne(false))).map((m) => m.from))], [sq(2, 1)]);
+});
+
+test('capture priority: a dama taking two beats a dama taking one', () => {
+  assert.deepEqual([...new Set(legalSteps(make(twoOverOne(true))).map((m) => m.from))], [sq(2, 1)]);
+});
+
+test('forcedStep: only a capture that is the single legal step', () => {
+  const one = make([[2, 3, 'red', 'P', 8], [3, 4, 'blue', 'P', 4], [7, 6, 'blue', 'P', 2]]);
+  assert.deepEqual(forcedStep(one), { from: sq(2, 3), to: sq(4, 5), capture: sq(3, 4) });
+
+  assert.equal(forcedStep(initialState()), null, 'plain moves are never forced');
+  const lonePlain = make([[0, 1, 'red', 'P', 8], [7, 6, 'blue', 'P', 2]]);
+  assert.equal(legalSteps(lonePlain).length, 1);
+  assert.equal(forcedStep(lonePlain), null, 'a single plain move is still the player\'s to make');
+
+  const twoTargets = make([[3, 2, 'red', 'P', 8], [2, 3, 'blue', 'P', 4], [4, 3, 'blue', 'P', 6], [7, 6, 'blue', 'P', 2]]);
+  assert.equal(legalSteps(twoTargets).length, 2);
+  assert.equal(forcedStep(twoTargets), null, 'two captures are a choice');
+
+  const landings = make([[0, 1, 'red', 'P', 8, true], [2, 3, 'blue', 'P', 4], [7, 6, 'blue', 'P', 2]]);
+  assert.ok(legalSteps(landings).length > 1);
+  assert.equal(forcedStep(landings), null, 'a dama choosing where to land is a choice');
+
+  assert.equal(forcedStep(endGame(one, 'resign', 'blue')), null, 'nothing is forced once the game is over');
+});
+
+test('forcedStep follows a chain one jump at a time', () => {
+  const s = make([[2, 1, 'red', 'P', 8], [3, 2, 'blue', 'P', 4], [3, 4, 'blue', 'P', 6], [0, 7, 'blue', 'P', 2]]);
+  const first = forcedStep(s);
+  assert.equal(first?.capture, sq(3, 2));
+  const mid = applyStep(s, first!).state;
+  assert.equal(mid.jumper, sq(4, 3));
+  assert.equal(forcedStep(mid)?.capture, sq(3, 4));
+});
+
+test('step records say whether a capture was forced, and a replay agrees', () => {
+  const forced = make([[2, 3, 'red', 'P', 8], [3, 4, 'blue', 'P', 4], [7, 6, 'blue', 'P', 2]]);
+  assert.equal(applyStep(forced, { from: sq(2, 3), to: sq(4, 5) }).record.forced, true);
+  const choice = make([[3, 2, 'red', 'P', 8], [2, 3, 'blue', 'P', 4], [4, 3, 'blue', 'P', 6], [7, 6, 'blue', 'P', 2]]);
+  assert.equal(applyStep(choice, legalSteps(choice)[0]).record.forced, false);
+  assert.equal(applyStep(initialState(), legalSteps(initialState())[0]).record.forced, false);
+
+  const opening = [
+    { from: sq(5, 2), to: sq(4, 3) },
+    { from: sq(2, 5), to: sq(3, 4) },
+    { from: sq(4, 3), to: sq(2, 5) },
+  ];
+  assert.deepEqual(replay(opening).records.map((r) => r.forced), [false, false, true]);
 });
 
 test('replay rebuilds the same state', () => {
@@ -281,6 +467,7 @@ test('random playouts keep the invariants and always terminate', () => {
       assert.ok(countPieces(state.board, 'blue') <= before.blue);
       assert.ok(state.scores.red >= before.scores.red && state.scores.blue >= before.scores.blue);
       if (record.continues) assert.equal(state.turn, record.side);
+      for (const side of ['red', 'blue'] as const) assert.equal(state.scores[side], GRADES[7].total(state.columns[side]), 'the score is the sheet');
       s = state;
       n++;
     }

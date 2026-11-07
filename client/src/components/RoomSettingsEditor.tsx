@@ -1,5 +1,6 @@
 import { GAME_MINUTES, MOVE_SECONDS, type RoomSettings } from '../../../shared/presets.ts';
 import type { Visibility } from '../../../shared/protocol.ts';
+import { GradePicker } from './GradePicker.tsx';
 import { Segmented, Switch } from './ui/controls.tsx';
 
 export function SettingsEditor({
@@ -15,6 +16,7 @@ export function SettingsEditor({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <GradePicker value={settings.grade} disabled={disabled} onChange={(grade) => onChange({ grade })} />
       <div>
         <p className="mb-2 text-body font-medium">Who can join</p>
         <Segmented
@@ -76,7 +78,14 @@ export function SettingsEditor({
           disabled={disabled}
           onChange={(v) => onChange({ maxCapture: v })}
           label="Take the most chips"
-          description="Tournament rule: you must choose the capture sequence that takes the most chips."
+          description="You must choose the capture that takes the most chips. On equal counts, a dama goes first."
+        />
+        <Switch
+          checked={settings.autoCapture}
+          disabled={disabled}
+          onChange={(v) => onChange({ autoCapture: v })}
+          label="Auto-capture"
+          description="A capture that is the only legal move plays itself, with a message saying so."
         />
       </div>
     </div>

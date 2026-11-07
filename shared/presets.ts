@@ -1,5 +1,5 @@
 // Time controls and room defaults shared by the lobby, the server and matchmaking.
-import type { Side } from './engine.ts';
+import type { Grade, Side } from './engine.ts';
 
 export type PresetId = 'blitz' | 'standard' | 'long';
 
@@ -26,22 +26,30 @@ export const MOVE_SECONDS = [0, 30, 60, 90] as const;
 export type HostSide = Side | 'random';
 
 export interface RoomSettings {
+  grade: Grade;
   gameMinutes: number;
   moveSeconds: number;
   rated: boolean;
   hostSide: HostSide;
   allowSpectators: boolean;
   maxCapture: boolean;
+  /** The server plays a capture by itself when it is the only legal step. */
+  autoCapture: boolean;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  grade: 7,
   gameMinutes: 20,
   moveSeconds: 60,
   rated: false,
   hostSide: 'random',
   allowSpectators: true,
-  maxCapture: false,
+  maxCapture: true,
+  autoCapture: true,
 };
+
+/** How long a forced capture stays on screen before it plays. */
+export const AUTO_CAPTURE_MS = 800;
 
 export function timeControlLabel(s: Pick<RoomSettings, 'gameMinutes' | 'moveSeconds'>): string {
   if (!s.gameMinutes && !s.moveSeconds) return 'No clock';

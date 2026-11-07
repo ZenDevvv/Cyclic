@@ -37,6 +37,12 @@ async function newPlayer(width = 1440, height = 900): Promise<Page> {
   return page;
 }
 
+/** The capture message must be on screen and in the live region that screen readers announce. */
+async function notice(page: Page, text: string) {
+  await page.locator('p:not(.sr-only)').filter({ hasText: text }).waitFor();
+  assert.equal(await page.getByRole('status').filter({ hasText: text }).count(), 1);
+}
+
 const shot = (page: Page, name: string) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 
 /** Click a playable square by its coordinate (accessible names start with "(x,y),"). */
@@ -94,15 +100,17 @@ test('a private room: invite link, start, captures in the ledger, chat, resign, 
   await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
   await friend.getByRole('group', { name: /Board, red to move/ }).waitFor();
 
-  // Red ₱2 forward, blue ₱2 forward, then both captures are forced.
+  // Red ₱2 forward, blue ₱2 forward. Red's capture is then the only legal move, so it plays itself.
   await move(host, [5, 2], [4, 3]);
   await friend.getByRole('group', { name: /blue to move/ }).waitFor();
   await move(friend, [2, 5], [3, 4]);
   await host.getByRole('group', { name: /red to move/ }).waitFor();
-  await click(host, 4, 3);
-  await shot(host, '03-capture-preview');
-  await click(host, 2, 5); // ₱2 + ₱2 on a + square
-  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  await notice(host, 'Auto-capture: your ₱2 must take ₱2.');
+  await notice(friend, "Auto-capture: Red's ₱2 must take ₱2.");
+  await shot(host, '03-auto-capture');
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor(); // ₱2 + ₱2 on a + square, played by the game
+  await host.getByRole('log', { name: 'Moves and captures' }).getByText('forced').waitFor();
+  await notice(friend, 'You must capture. Choose your capture.');
   await move(friend, [1, 6], [3, 4]); // ₱8 − ₱2 on a − square
 
   for (const p of [host, friend]) {
@@ -138,6 +146,275 @@ test('a private room: invite link, start, captures in the ledger, chat, resign, 
   // The finished game has a replay.
   const res = await fetch(`${server.url}/api/leaderboard`);
   assert.equal(res.status, 200);
+});
+
+test('pass and play: auto-capture, its message, take back, and the setting that turns it off', async () => {
+  const page = await newPlayer();
+  const ledger = page.getByRole('log', { name: 'Moves and captures' });
+  await page.goto(server.url + '/play/local');
+  await page.getByRole('group', { name: /Board, red to move/ }).waitFor();
+
+  // A previous forced capture must not trap Take back: it returns to the last real choice.
+  await move(page, [5, 2], [4, 3]);
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(page, [2, 5], [3, 4]);
+  await notice(page, 'Auto-capture: your ₱2 must take ₱2.');
+  await ledger.getByText('forced').waitFor();
+  await notice(page, 'You must capture. Choose your capture.');
+  await page.getByRole('button', { name: 'Take back' }).click();
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await page.waitForTimeout(1200); // longer than the pause: nothing may replay by itself
+  assert.equal(await ledger.getByText('forced').count(), 0, 'taking back stays taken back');
+
+  // With the setting off, the message still warns but the player makes the capture.
+  await page.goto(server.url + '/settings');
+  await page.getByRole('switch', { name: /Auto-capture on this device/ }).click();
+  await page.goto(server.url + '/play/local');
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(page, [2, 5], [3, 4]);
+  await notice(page, 'Forced capture: your ₱2 must take ₱2.');
+  await page.waitForTimeout(1200);
+  assert.equal(await ledger.getByText('forced').count(), 0, 'nothing played by itself');
+  await move(page, [4, 3], [2, 5]);
+  await ledger.getByText('forced').waitFor();
+});
+
+test('a host can turn auto-capture off for the room', async () => {
+  const host = await newPlayer();
+  const friend = await newPlayer();
+  await host.goto(server.url + '/play');
+  await host.getByRole('button', { name: 'Create a room' }).first().click();
+  await host.getByRole('radio', { name: 'Red', exact: true }).click();
+  await host.getByRole('radio', { name: 'None' }).last().click();
+  const toggle = host.getByRole('switch', { name: /^Auto-capture/ });
+  assert.equal(await toggle.getAttribute('aria-checked'), 'true', 'on by default');
+  await toggle.click();
+  await host.getByRole('button', { name: 'Create room' }).click();
+  await host.waitForURL(/\/room\//);
+  await friend.goto(host.url());
+  await friend.getByText('Waiting for').first().waitFor();
+  await friend.getByText('Off', { exact: true }).waitFor(); // the guest can see the host's choice
+  await host.getByRole('button', { name: 'Start game' }).click();
+  await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
+  await move(host, [5, 2], [4, 3]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(friend, [2, 5], [3, 4]);
+  await notice(host, 'Forced capture: your ₱2 must take ₱2.');
+  await host.waitForTimeout(1200);
+  await move(host, [4, 3], [2, 5]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+});
+
+const boardTheme = (page: Page) => page.getByRole('group', { name: /Board,/ }).getAttribute('data-board');
+
+/** Open a local game on a saved position, as if it had been left there. */
+async function savedGame(page: Page, mode: 'bot' | 'local', save: object) {
+  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [`scidama.local.${mode}`, JSON.stringify({ level: 'easy', you: 'red', resigned: null, ...save })] as const);
+  await page.goto(`${server.url}/play/${mode}`);
+  await page.getByRole('group', { name: /Board,/ }).waitFor();
+}
+
+const square = (x: number, y: number) => y * 8 + x;
+const opening = [[5, 2, 4, 3], [2, 5, 3, 4], [4, 3, 2, 5], [1, 6, 3, 4]].map(([a, b, c, d]) => ({ from: square(a, b), to: square(c, d) }));
+
+test('a Grade 9 room: chosen by the host, seen by the guest, played, saved and replayed', async () => {
+  const host = await newPlayer();
+  const friend = await newPlayer(390, 844);
+  await host.goto(server.url + '/play');
+  await host.getByRole('button', { name: 'Create a room' }).first().click();
+  const dialog = host.getByRole('dialog');
+  await dialog.getByRole('radio', { name: 'Grade 9' }).click();
+  await dialog.getByText('Temperature humidity index').waitFor();
+  await dialog.getByRole('radio', { name: 'Red', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'None' }).last().click();
+  await dialog.getByRole('switch', { name: /^Auto-capture/ }).click();
+  await dialog.getByRole('button', { name: 'Create room' }).click();
+  await host.waitForURL(/\/room\//);
+  await friend.goto(host.url());
+  await friend.getByText('Grade 9 · THI').first().waitFor();
+  await host.getByRole('button', { name: 'Start game' }).click();
+  for (const p of [host, friend]) {
+    await p.getByRole('group', { name: /Board, red to move/ }).waitFor();
+    assert.equal(await boardTheme(p), 'sky');
+    await p.getByText('Grade 9 · THI').first().waitFor();
+  }
+  await host.locator('button[aria-label="(5,2), plus, Red 25%"]').waitFor({ state: 'attached' });
+
+  await move(host, [5, 2], [4, 3]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(friend, [2, 5], [3, 4]);
+  await host.getByRole('group', { name: /red to move/ }).waitFor();
+  await move(host, [4, 3], [2, 5]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  for (const p of [host, friend]) {
+    const ledger = p.getByRole('log', { name: 'Moves and captures' });
+    await ledger.getByText('25% + 25% = 50% → 88°F').waitFor();
+    await ledger.getByText('+88°F').waitFor();
+  }
+  await host.getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('dialog').getByText(/°C\)/).first().waitFor(); // finals show °C as well
+  await host.getByRole('dialog').getByRole('link', { name: /Replay|Review/ }).first().click();
+  await host.waitForURL(/\/game\//);
+  await host.getByText('Grade 9 · THI').first().waitFor();
+  await host.getByRole('log', { name: 'Moves and captures' }).getByText('25% + 25% = 50% → 88°F').waitFor();
+  assert.equal(await host.getByRole('group', { name: /Replay/ }).getAttribute('data-board'), 'sky');
+});
+
+test('a finished Grade 10 game reads right: its own units, the reminder gone, the board over', async () => {
+  const host = await newPlayer();
+  const friend = await newPlayer();
+  await host.goto(server.url + '/play');
+  await host.getByRole('button', { name: 'Create a room' }).first().click();
+  const dialog = host.getByRole('dialog');
+  await dialog.getByRole('radio', { name: 'Grade 10' }).click();
+  await dialog.getByRole('radio', { name: 'Red', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Create room' }).click();
+  await host.waitForURL(/\/room\//);
+  await friend.goto(host.url());
+  await friend.getByText('Waiting for').first().waitFor();
+  await host.getByRole('button', { name: 'Start game' }).click();
+  await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
+  await host.getByText(/Turn \d+ .*lowest total wins/).first().waitFor();
+  await host.getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('group', { name: 'Board, game over' }).waitFor({ state: 'attached' });
+  await host.keyboard.press('Escape');
+  await host.getByText(/calories to .* calories/).first().waitFor();
+  assert.equal(await host.getByText(/₱/).count(), 0, 'no pesos anywhere in a Grade 10 game');
+  assert.equal(await host.getByText(/Turn \d+ .*lowest total wins/).count(), 0, 'the result replaces the reminder');
+});
+
+test('capture points read as a penalty, and one chip is one chip', async () => {
+  const page = await newPlayer();
+  await savedGame(page, 'local', { steps: opening.slice(0, 2), grade: 7 });
+  await page.getByText(/lowest total wins/).first().waitFor();
+  await page.getByRole('log', { name: 'Moves and captures' }).getByText('+₱4').waitFor({ timeout: 4000 }); // the auto-capture
+  const colour = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).color);
+  const negative = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement('span'));
+    probe.style.color = 'var(--negative)';
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  assert.equal(await colour('[role=log] .text-negative'), negative);
+  assert.equal(await page.locator('[role=log] .text-accent').count(), 0, 'amber is not used for points');
+
+  // A blocked ending with one blue chip left, from the game played by hand.
+  const ending = await newPlayer();
+  const line = [[3,2,4,3],[6,5,5,4],[4,3,6,5],[5,6,7,4],[4,1,3,2],[7,6,6,5],[3,2,4,3],[7,4,6,3],[5,2,7,4],[7,4,5,6],[5,6,3,4],[3,6,4,5],[3,4,5,6],[6,7,4,5],[4,3,5,4],[4,5,6,3],[7,2,5,4],[0,5,1,4],[3,0,4,1],[1,6,0,5],[4,1,3,2],[1,4,2,3],[1,2,3,4],[3,4,1,6],[0,7,2,5],[3,2,2,3],[2,5,3,4],[2,3,4,5],[4,7,5,6],[4,5,6,7],[2,7,1,6],[6,7,3,4],[0,5,1,4],[3,4,0,7],[1,4,0,3],[0,1,1,2]];
+  await savedGame(ending, 'bot', { steps: line.map(([a, b, c, d]) => ({ from: square(a, b), to: square(c, d) })), grade: 7 });
+  await ending.getByRole('group', { name: 'Board, game over' }).waitFor({ state: 'attached' });
+  await ending.getByRole('button', { name: 'Result' }).click();
+  await ending.getByRole('dialog').getByText('1 chip', { exact: true }).waitFor();
+  assert.equal(await ending.getByRole('dialog').getByText('1 chips').count(), 0);
+});
+
+test('quick match in Grade 10: the same queue, a Thermo game and its score sheet', async () => {
+  const a = await newPlayer();
+  const b = await newPlayer(390, 844);
+  for (const p of [a, b]) {
+    await p.goto(server.url + '/play');
+    await p.getByRole('radio', { name: 'Grade 10' }).first().click();
+    await p.getByRole('button', { name: /^Long/ }).click();
+  }
+  for (const p of [a, b]) {
+    await p.waitForURL(/\/room\//);
+    await p.getByRole('group', { name: /Board,/ }).waitFor();
+    assert.equal(await boardTheme(p), 'clay');
+    await p.getByRole('table', { name: 'Score sheet' }).waitFor();
+    await p.getByText('0 cal', { exact: true }).first().waitFor();
+  }
+  await a.getByRole('button', { name: 'Resign' }).click();
+  await a.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+  await a.getByRole('dialog').getByText('Mass × temperature').waitFor();
+});
+
+test('the bot plays Grade 8 on the phone, with real superscripts and nothing off the page', async () => {
+  const page = await newPlayer(390, 844);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(server.url + '/play/bot');
+  const setup = page.getByRole('dialog');
+  await setup.getByRole('radio', { name: 'Grade 8' }).click();
+  await setup.getByRole('radio', { name: 'Easy' }).click();
+  await setup.getByRole('radio', { name: 'Red, first' }).click();
+  await setup.getByRole('button', { name: 'Start game' }).click();
+  await page.getByText(/Grade 8 · Scientific Notation/).first().waitFor();
+  assert.equal(await boardTheme(page), 'chalk');
+  await move(page, [5, 2], [4, 3]);
+  const ledger = page.getByRole('log', { name: 'Moves and captures' });
+  await ledger.locator('sup').first().waitFor();
+  await page.getByRole('group', { name: /red to move/ }).waitFor({ timeout: 10_000 }); // the bot answered
+  const text = await ledger.innerText();
+  assert.ok(!/[⁰⁴-⁹⁻]/.test(text), 'exponents are drawn, not left to a fallback font');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('no grade scrolls sideways at any width, and each keeps its own board', async () => {
+  const themes = { 7: 'felt', 8: 'chalk', 9: 'sky', 10: 'clay' };
+  for (const [width, height] of [[1440, 900], [768, 1024], [390, 844]] as const) {
+    for (const [grade, theme] of Object.entries(themes)) {
+      const page = await newPlayer(width, height);
+      await savedGame(page, 'local', { steps: opening, grade: Number(grade) });
+      assert.equal(await boardTheme(page), theme);
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      assert.equal(over, 0, `grade ${grade} at ${width}px`);
+      await page.context().close();
+    }
+  }
+});
+
+test('local games: the grade is chosen, kept across a reload, and old saves stay Grade 7', async () => {
+  const page = await newPlayer();
+  await page.goto(server.url + '/play/local');
+  await page.getByRole('button', { name: 'New game' }).click();
+  await page.getByRole('dialog').getByRole('radio', { name: 'Grade 10' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Start game' }).click();
+  await page.getByText(/Grade 10 · Thermo/).first().waitFor();
+  await move(page, [5, 2], [4, 3]);
+  await page.reload();
+  await page.getByText(/Grade 10 · Thermo/).first().waitFor();
+  await page.getByRole('log', { name: 'Moves and captures' }).getByText('2°C').waitFor();
+
+  const old = await newPlayer();
+  await savedGame(old, 'local', { steps: opening.slice(0, 1) }); // saved before grades existed
+  await old.getByText(/Grade 7 · Electro/).first().waitFor();
+});
+
+test('board settings: one look for everything, Classic chips only in Grade 7, and the old default moves on', async () => {
+  const prefs = (patch: object, version = 2) => JSON.stringify({ state: { boardTheme: 'grade', ...patch }, version });
+  const withPrefs = async (value: string, grade: number) => {
+    const page = await newPlayer();
+    await page.addInitScript((v) => localStorage.setItem('scidama.prefs', v), value);
+    await savedGame(page, 'local', { steps: [], grade });
+    return page;
+  };
+  assert.equal(await boardTheme(await withPrefs(prefs({ boardTheme: 'slate' }), 9)), 'slate', 'a chosen look wins');
+  assert.equal(await boardTheme(await withPrefs(prefs({ boardTheme: 'felt' }, 1), 9)), 'sky', 'the old default follows the grade');
+  assert.equal(await boardTheme(await withPrefs(prefs({ boardTheme: 'slate' }, 1), 9)), 'slate', 'an old choice is kept');
+
+  const grade7 = await withPrefs(prefs({ pieceSet: 'classic' }), 7);
+  assert.equal(await grade7.locator('[data-board] img').count(), 24, 'Grade 7 has the original art');
+  const grade8 = await withPrefs(prefs({ pieceSet: 'classic' }), 8);
+  assert.equal(await grade8.locator('[data-board] img').count(), 0, 'there is no art for other grades');
+  assert.equal(await grade8.locator('[data-board] svg text').filter({ hasText: '1.212' }).count(), 2);
+});
+
+test('the rules page teaches every grade', async () => {
+  const page = await newPlayer();
+  await page.goto(server.url + '/learn');
+  for (const name of ['Grade 8 · Scientific Notation', 'Grade 9 · THI', 'Grade 10 · Thermo']) {
+    await page.getByRole('heading', { name }).waitFor();
+  }
+  await page.getByText("these are Scidama Online's own rules").waitFor();
+  const demo = page.locator('#grade-10').getByRole('group', { name: 'Practice board' });
+  assert.equal(await demo.getAttribute('data-board'), 'clay');
+  await demo.locator('button[aria-label^="(2,3),"]').click();
+  await demo.locator('button[aria-label^="(4,5),"]').click();
+  await page.locator('#grade-10').getByText('37 g × 11°C = 407 g·°C').first().waitFor();
 });
 
 test('quick match puts two players into the same game', async () => {
