@@ -36,7 +36,7 @@ server/   index.ts (entry) → app.ts (createServer), db.ts, auth.ts, http.ts, r
 client/   index.html, public/ (sfx, classic piece art), src/{pages,components,lib,store,styles}
 e2e/      browser end-to-end test (screenshots land in e2e/artifacts/, git-ignored)
 scripts/  seed-demo.ts — local demo data
-docs/     RULES, ANALYSIS, IMPLEMENTATION_PLAN, CHAIN_PROMPTS, REVIEW_NOTES
+docs/     RULES, SCIDAMA_VERSIONS, ANALYSIS, IMPLEMENTATION_PLAN, CHAIN_PROMPTS, REVIEW_NOTES, DATABASE_PLAN, GRADES_PLAN
 ```
 
 ## Hard rules
