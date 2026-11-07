@@ -136,7 +136,7 @@ function ReplayView({ game }: { game: GameDetail }) {
           <div className="flex items-center justify-between px-5.5 pt-4 pb-2">
             <h2 className="text-card font-semibold">Ledger</h2>
             <span className="num text-meta text-muted">
-              Step {pos} of {total}
+              Step {pos} of {total} · lowest total wins
             </span>
           </div>
           <ScoreSheet grade={grade} columns={state.columns} />

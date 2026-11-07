@@ -100,7 +100,7 @@ function ScoringGuide({ grade }: { grade: Grade }) {
               <span className="min-w-0 text-muted">
                 <MathText>{`${eq.left} = ${eq.result}${eq.factors.length > 0 ? ` · ${eq.factors.join(' · ')}` : ''}`}</MathText>
               </span>
-              <span className={eq.scored ? 'flex-none font-semibold text-accent' : 'flex-none text-meta text-faint'}>
+              <span className={eq.scored ? 'flex-none font-semibold text-negative' : 'flex-none text-meta text-faint'}>
                 <MathText>{eq.scored ? `+${eq.points}` : eq.reason!}</MathText>
               </span>
             </li>
@@ -137,7 +137,7 @@ function StepLine({ r, current, onSelect }: { r: StepRecord; current: boolean; o
             {eq.factors.length > 0 && <span className="text-faint"> · {eq.factors.join(' · ')}</span>}
           </span>
           {eq.scored ? (
-            <span className="num flex-none font-semibold text-accent">
+            <span className="num flex-none font-semibold text-negative">
               <MathText>{`+${eq.points}`}</MathText>
             </span>
           ) : (

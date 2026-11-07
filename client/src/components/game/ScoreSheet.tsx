@@ -8,7 +8,7 @@ export function ScoreSheet({ grade, columns }: { grade: Grade; columns: Record<S
   const heads = GRADES[grade].columns;
   if (heads.length < 2) return null;
   return (
-    <table className="num mx-5.5 mb-1 border-collapse text-body" aria-label="Score sheet">
+    <table className="num mx-5.5 mb-1 self-start border-collapse text-body" aria-label="Score sheet">
       <tbody>
         {(['red', 'blue'] as const).map((side) => (
           <tr key={side}>

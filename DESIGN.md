@@ -16,7 +16,7 @@ screen follows the skill's **page** rules (§13); every other screen follows the
 
 **Night play on true black; the board is the only bright thing in the room.** Elevation is a lightness
 step alone. Colour is spent on three things only: the board, the two sides (red and blue), and one data
-hue (amber) for points and for marks the player must act on.
+hue (amber) for marks the player must act on.
 
 - **Face** (what makes it Scidama and not a kit): a warm near-black ground, the amber of coin and current
   (₱ and kWh) as the one data hue, and the felt-green board of the original Cyclic build.
@@ -120,7 +120,9 @@ Board themes (Settings → Board): **Match the grade** (default) gives each grad
 - Red and blue appear only as side identity: chip rings, a 8 px dot beside a player's name, the running
   clock's side mark. Never as status.
 - Wins/losses use the status pill pairs (pale ink on a dark tint), not the side colours.
-- Amber marks: score figures and gains in the ledger, last-move squares, legal-move dots, the selected
+- Capture points count against the player, because the lowest total wins, so they are never amber: amber reads as a
+  reward. The ledger and landing-square previews use the `--negative` pair.
+- Amber marks: last-move squares, legal-move dots, the selected
   chip's ring, chips that must capture.
 
 ## 6. Components

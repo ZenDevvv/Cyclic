@@ -1,7 +1,7 @@
 // Offline play on this device: against the bot (in a worker) or pass-and-play. Not rated, kept across reloads.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { endGame, forcedStep, other, replay, type GameState, type Grade, type Side, type Step, type StepRecord } from '../../../shared/engine.ts';
-import { captureNotice, gradeName } from '../../../shared/notation.ts';
+import { boardLabel, captureNotice, gradeName } from '../../../shared/notation.ts';
 import { AUTO_CAPTURE_MS } from '../../../shared/presets.ts';
 import { BOT_LEVELS, type BotLevel } from '../../../shared/bot.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
@@ -217,7 +217,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
             onStep={onStep}
             onIllegal={playIllegal}
             last={mark}
-            label={`Board, ${state.turn} to move`}
+            label={boardLabel(state)}
           />
         }
         top={strip(topSide)}
@@ -228,7 +228,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
             <div className="flex items-center justify-between px-5.5 pt-4 pb-2">
               <h2 className="text-card font-semibold">Ledger</h2>
               <span className="num text-meta text-muted">
-                {state.result ? resultTitle(state.result, players, mode === 'bot' ? game.you : null) : `Turn ${state.turnNumber}`}
+                {state.result ? resultTitle(state.result, players, mode === 'bot' ? game.you : null) : `Turn ${state.turnNumber} · lowest total wins`}
               </span>
             </div>
             <ScoreSheet grade={grade} columns={state.columns} />

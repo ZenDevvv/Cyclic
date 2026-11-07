@@ -5,7 +5,7 @@ import type { RatingChange } from '../../../../shared/protocol.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { SideDot } from '../ui/controls.tsx';
 import { MathText } from '../ui/MathText.tsx';
-import { signed } from '../../lib/format.ts';
+import { plural, signed } from '../../lib/format.ts';
 import type { PlayerInfo } from './PlayerStrip.tsx';
 
 interface Props {
@@ -81,7 +81,7 @@ export function ResultDialog({ open, onClose, result, grade, columns, captures, 
               {sides.map((s) => (
                 <span key={s} className="num text-right">
                   <MathText>{scoreText(result.tally[s].total, grade)}</MathText>
-                  <span className="block text-meta text-faint">{result.tally[s].items.length} chips</span>
+                  <span className="block text-meta text-faint">{plural(result.tally[s].items.length, 'chip')}</span>
                 </span>
               ))}
             </div>

@@ -79,6 +79,12 @@ test('chips and amber marks stand out from every new light square', () => {
   }
 });
 
+test('capture points are a penalty: readable, and not the amber used for marks', () => {
+  assert.ok(contrast(rgb(root.negative), rgb(root['pill-negative-bg'])) >= 4.5, 'the preview pill');
+  assert.ok(contrast(rgb(root.negative), rgb(root.surface)) >= 4.5, 'ledger points');
+  assert.notEqual(root.negative, root.accent);
+});
+
 test('the new themes look different from each other and from felt', () => {
   const names = ['felt', ...NEW_THEMES];
   for (const a of names) for (const b of names) {

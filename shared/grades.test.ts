@@ -27,7 +27,7 @@ import {
 } from './engine.ts';
 import { chooseTurn, evaluate, type BotLevel } from './bot.ts';
 import { encodeBoard, decodeBoard } from './codec.ts';
-import { chipFace, equationParts, equationText, finalText, gradeName, previewText, scoreText, scoringGuide, shortScore, stepText } from './notation.ts';
+import { boardLabel, chipFace, equationParts, equationText, finalText, gradeName, previewText, scoreText, scoringGuide, shortScore, stepText } from './notation.ts';
 
 const ALL: Grade[] = [7, 8, 9, 10];
 const OPS: Op[] = ['add', 'sub', 'mul', 'div'];
@@ -485,6 +485,13 @@ test('tight spaces get a shorter score, so a player name still fits', () => {
   assert.equal(shortScore(1620, 9), '1620°F');
   assert.equal(shortScore(444500, 10), '444,500 cal');
   assert.ok(shortScore(444500, 10).length < scoreText(444500, 10).length);
+});
+
+test('the board names whose move it is, and stops when the game is over', () => {
+  const s = initialState();
+  assert.equal(boardLabel(s), 'Board, red to move');
+  assert.equal(boardLabel({ ...s, turn: 'blue' }), 'Board, blue to move');
+  assert.equal(boardLabel(endGame(s, 'time')), 'Board, game over');
 });
 
 test('grades are named the same way everywhere', () => {

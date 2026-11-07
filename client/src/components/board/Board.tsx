@@ -425,7 +425,7 @@ function CapturePreview({ step, board, grade }: { step: LegalStep; board: readon
   const scored = eq.base !== null;
   return (
     <span
-      className={`rounded-full px-1.5 text-[11px] leading-[16px] font-semibold whitespace-nowrap ${scored ? 'bg-accent text-accent-ink' : 'bg-black/70 text-white'}`}
+      className={`rounded-full px-1.5 text-[11px] leading-[16px] font-semibold whitespace-nowrap ${scored ? 'bg-negative-bg text-negative' : 'bg-black/70 text-white'}`}
     >
       <MathText>{previewText(eq)}</MathText>
     </span>

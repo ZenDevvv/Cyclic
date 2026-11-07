@@ -261,6 +261,56 @@ test('a Grade 9 room: chosen by the host, seen by the guest, played, saved and r
   assert.equal(await host.getByRole('group', { name: /Replay/ }).getAttribute('data-board'), 'sky');
 });
 
+test('a finished Grade 10 game reads right: its own units, the reminder gone, the board over', async () => {
+  const host = await newPlayer();
+  const friend = await newPlayer();
+  await host.goto(server.url + '/play');
+  await host.getByRole('button', { name: 'Create a room' }).first().click();
+  const dialog = host.getByRole('dialog');
+  await dialog.getByRole('radio', { name: 'Grade 10' }).click();
+  await dialog.getByRole('radio', { name: 'Red', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Create room' }).click();
+  await host.waitForURL(/\/room\//);
+  await friend.goto(host.url());
+  await friend.getByText('Waiting for').first().waitFor();
+  await host.getByRole('button', { name: 'Start game' }).click();
+  await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
+  await host.getByText(/Turn \d+ .*lowest total wins/).first().waitFor();
+  await host.getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('dialog').getByRole('button', { name: 'Resign' }).click();
+  await host.getByRole('group', { name: 'Board, game over' }).waitFor({ state: 'attached' });
+  await host.keyboard.press('Escape');
+  await host.getByText(/calories to .* calories/).first().waitFor();
+  assert.equal(await host.getByText(/₱/).count(), 0, 'no pesos anywhere in a Grade 10 game');
+  assert.equal(await host.getByText(/Turn \d+ .*lowest total wins/).count(), 0, 'the result replaces the reminder');
+});
+
+test('capture points read as a penalty, and one chip is one chip', async () => {
+  const page = await newPlayer();
+  await savedGame(page, 'local', { steps: opening.slice(0, 2), grade: 7 });
+  await page.getByText(/lowest total wins/).first().waitFor();
+  await page.getByRole('log', { name: 'Moves and captures' }).getByText('+₱4').waitFor({ timeout: 4000 }); // the auto-capture
+  const colour = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).color);
+  const negative = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement('span'));
+    probe.style.color = 'var(--negative)';
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  assert.equal(await colour('[role=log] .text-negative'), negative);
+  assert.equal(await page.locator('[role=log] .text-accent').count(), 0, 'amber is not used for points');
+
+  // A blocked ending with one blue chip left, from the game played by hand.
+  const ending = await newPlayer();
+  const line = [[3,2,4,3],[6,5,5,4],[4,3,6,5],[5,6,7,4],[4,1,3,2],[7,6,6,5],[3,2,4,3],[7,4,6,3],[5,2,7,4],[7,4,5,6],[5,6,3,4],[3,6,4,5],[3,4,5,6],[6,7,4,5],[4,3,5,4],[4,5,6,3],[7,2,5,4],[0,5,1,4],[3,0,4,1],[1,6,0,5],[4,1,3,2],[1,4,2,3],[1,2,3,4],[3,4,1,6],[0,7,2,5],[3,2,2,3],[2,5,3,4],[2,3,4,5],[4,7,5,6],[4,5,6,7],[2,7,1,6],[6,7,3,4],[0,5,1,4],[3,4,0,7],[1,4,0,3],[0,1,1,2]];
+  await savedGame(ending, 'bot', { steps: line.map(([a, b, c, d]) => ({ from: square(a, b), to: square(c, d) })), grade: 7 });
+  await ending.getByRole('group', { name: 'Board, game over' }).waitFor({ state: 'attached' });
+  await ending.getByRole('button', { name: 'Result' }).click();
+  await ending.getByRole('dialog').getByText('1 chip', { exact: true }).waitFor();
+  assert.equal(await ending.getByRole('dialog').getByText('1 chips').count(), 0);
+});
+
 test('quick match in Grade 10: the same queue, a Thermo game and its score sheet', async () => {
   const a = await newPlayer();
   const b = await newPlayer(390, 844);

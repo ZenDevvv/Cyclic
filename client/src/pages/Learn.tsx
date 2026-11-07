@@ -150,7 +150,7 @@ function GradeExamples({ grade }: { grade: Grade }) {
                 = <MathText>{p.result}</MathText>
               </span>
               {p.scored ? (
-                <span className="flex-none font-semibold text-accent">
+                <span className="flex-none font-semibold text-negative">
                   <MathText>{`+${p.points}`}</MathText>
                 </span>
               ) : (
@@ -320,7 +320,7 @@ export default function Learn() {
                     <span className="text-ink">{p.left}</span> = {p.result}
                     {p.factors.length > 0 && <span className="text-faint"> · {p.factors.join(' · ')}</span>}
                   </span>
-                  {p.scored ? <span className="flex-none font-semibold text-accent">+₱{eq.points}</span> : <span className="flex-none text-meta text-faint">{p.reason}</span>}
+                  {p.scored ? <span className="flex-none font-semibold text-negative">+₱{eq.points}</span> : <span className="flex-none text-meta text-faint">{p.reason}</span>}
                 </li>
               );
             })}

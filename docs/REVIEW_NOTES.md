@@ -148,3 +148,10 @@ Each item says what was decided, why, and where to change it. **Open questions**
 5. **Identity:** are guest accounts plus optional passwords enough, or do you want email / Google sign-in?
 6. **Language:** add a Tagalog translation for students?
 7. **Name:** the product is called Scidama in the UI and the repo is Cyclic — keep both?
+8. **Grade 8's big swings:** one forced capture can decide a game. In 40 games between equal bots, the capture behind
+   the loser's biggest score was the only legal move in 31 of the 37 it decided. Scoring here is our own rule, so it
+   can change, but play more before changing it. To soften it: edit `capture` in `SCIENTIFIC_NOTATION`.
+9. **Grade 10's empty column:** the final multiplies g by °C, so a side with no grams scores almost nothing. In 40
+   games between equal bots, 33 sides finished with an empty column and 30 of them won, 12 on exactly 0 calories. This
+   is the published formula, so it stays unless a teacher says otherwise.
+10. **Easy bot:** it plays about even with a random player in every grade. Should it be stronger?

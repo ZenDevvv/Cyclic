@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { forcedStep, initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
-import { captureNotice, gradeName } from '../../../shared/notation.ts';
+import { boardLabel, captureNotice, gradeName, scoreText } from '../../../shared/notation.ts';
 import { timeControlLabel, type RoomSettings } from '../../../shared/presets.ts';
 import type { RoomSnapshot, SeatView, Visibility } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
@@ -11,6 +11,7 @@ import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx
 import { Ledger } from '../components/game/Ledger.tsx';
 import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
 import { ScoreSheet } from '../components/game/ScoreSheet.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { Chat } from '../components/game/Chat.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, ButtonLink, IconButton } from '../components/ui/Button.tsx';
@@ -462,7 +463,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
             onStep={onStep}
             onIllegal={playIllegal}
             last={mark}
-            label={`Board, ${state.turn} to move`}
+            label={boardLabel(state)}
           />
         }
         top={strip(other(orientation))}
@@ -504,9 +505,11 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
             {tab === 'ledger' ? (
               <>
                 <p className="px-5.5 pt-2 text-meta text-muted">
-                  {state.result
-                    ? `${resultTitle(state.result, players, mySide)} · ₱${state.result.final.red}–₱${state.result.final.blue}`
-                    : `Turn ${state.turnNumber} · ${timeControlLabel(snap.settings)}`}
+                  <MathText>
+                    {state.result
+                      ? `${resultTitle(state.result, players, mySide)} · ${scoreText(state.result.final.red, snap.settings.grade)} to ${scoreText(state.result.final.blue, snap.settings.grade)}`
+                      : `Turn ${state.turnNumber} · ${timeControlLabel(snap.settings)} · lowest total wins`}
+                  </MathText>
                 </p>
                 <ScoreSheet grade={snap.settings.grade} columns={state.columns} />
                 <Ledger records={records} grade={snap.settings.grade} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />

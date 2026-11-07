@@ -74,6 +74,9 @@ export function chipFace({ unit, value }: Pick<Piece, 'unit' | 'value'>): { main
   }
 }
 
+/** What the board is called to a screen reader: whose move it is, or that the game is over. */
+export const boardLabel = (state: GameState): string => (state.result ? 'Board, game over' : `Board, ${state.turn} to move`);
+
 /** "Grade 9 · THI". */
 export const gradeName = (grade: Grade): string => `Grade ${grade} · ${GRADES[grade].name}`;
 
