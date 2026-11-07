@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { applyStep, endGame, initialState, type GameState, type Side, type StepRecord } from '../../../shared/engine.ts';
-import { END_REASON_TEXT } from '../../../shared/notation.ts';
+import { END_REASON_TEXT, gradeName, scoreText } from '../../../shared/notation.ts';
 import { timeControlLabel } from '../../../shared/presets.ts';
 import type { GameDetail } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
 import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
+import { ScoreSheet } from '../components/game/ScoreSheet.tsx';
 import { Button, IconButton } from '../components/ui/Button.tsx';
 import { EmptyState, Pill, Skeleton } from '../components/ui/controls.tsx';
 import { useApi } from '../lib/useApi.ts';
@@ -60,6 +62,7 @@ function ReplayView({ game }: { game: GameDetail }) {
   }, [game]);
 
   const total = records.length;
+  const { grade } = game.settings;
   const [pos, setPos] = useState(total); // number of steps shown
   const [playing, setPlaying] = useState(false);
   const [orientation, setOrientation] = useState<Side>('red');
@@ -102,7 +105,7 @@ function ReplayView({ game }: { game: GameDetail }) {
     blue: { id: game.blue.id, name: game.blue.name, rating: game.blue.rating },
   };
   const strip = (side: Side) => (
-    <PlayerStrip side={side} player={players[side]} score={state.scores[side]} toMove={!state.result && state.turn === side} moveLeft={null} moveSeconds={0} now={0} over={pos === total} />
+    <PlayerStrip side={side} player={players[side]} grade={grade} score={state.scores[side]} toMove={!state.result && state.turn === side} moveLeft={null} moveSeconds={0} now={0} over={pos === total} />
   );
   const winnerName = game.winner ? players[game.winner].name : null;
 
@@ -115,16 +118,17 @@ function ReplayView({ game }: { game: GameDetail }) {
               {game.red.name} vs {game.blue.name}
             </h1>
             <p className="num mt-1 text-body text-muted">
-              {winnerName ? `${winnerName} won` : 'Draw'} · {END_REASON_TEXT[game.reason]} · ₱{game.scores.red}–₱{game.scores.blue} · {relativeTime(game.endedAt)}
+              {winnerName ? `${winnerName} won` : 'Draw'} · {END_REASON_TEXT[game.reason]} · <MathText>{`${scoreText(game.scores.red, grade)} to ${scoreText(game.scores.blue, grade)}`}</MathText> · {relativeTime(game.endedAt)}
             </p>
           </div>
           <div className="flex gap-2">
+            <Pill>{gradeName(grade)}</Pill>
             <Pill>{game.rated ? 'Rated' : 'Casual'}</Pill>
             <Pill>{timeControlLabel(game.settings)}</Pill>
           </div>
         </div>
       }
-      board={<Board board={state.board} orientation={orientation} last={mark} label={`Replay, step ${pos} of ${total}`} hints={false} />}
+      board={<Board board={state.board} grade={grade} orientation={orientation} last={mark} label={`Replay, step ${pos} of ${total}`} hints={false} />}
       top={strip(orientation === 'red' ? 'blue' : 'red')}
       bottom={strip(orientation)}
       panel={
@@ -135,7 +139,8 @@ function ReplayView({ game }: { game: GameDetail }) {
               Step {pos} of {total}
             </span>
           </div>
-          <Ledger records={records} current={pos - 1} onSelect={(i) => go(i + 1, false)} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
+          <ScoreSheet grade={grade} columns={state.columns} />
+          <Ledger records={records} grade={grade} current={pos - 1} onSelect={(i) => go(i + 1, false)} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
         </>
       }
       actions={

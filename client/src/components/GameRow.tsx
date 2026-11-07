@@ -1,7 +1,9 @@
 import { Link } from 'react-router';
+import { gradeName, scoreText } from '../../../shared/notation.ts';
 import type { GameSummary } from '../../../shared/protocol.ts';
 import { Pill } from './ui/controls.tsx';
-import { peso, relativeTime } from '../lib/format.ts';
+import { MathText } from './ui/MathText.tsx';
+import { relativeTime } from '../lib/format.ts';
 
 export function GameRow({ game, meId }: { game: GameSummary; meId: string }) {
   const mySide = game.red.id === meId ? 'red' : 'blue';
@@ -19,7 +21,8 @@ export function GameRow({ game, meId }: { game: GameSummary; meId: string }) {
           </Link>
         </p>
         <p className="num text-body text-muted">
-          {peso(game.scores[mySide])}–{peso(game.scores[mySide === 'red' ? 'blue' : 'red'])} · {relativeTime(game.endedAt)}
+          <MathText>{`${scoreText(game.scores[mySide], game.grade)} to ${scoreText(game.scores[mySide === 'red' ? 'blue' : 'red'], game.grade)}`}</MathText> · {gradeName(game.grade)} ·{' '}
+          {relativeTime(game.endedAt)}
           {change !== null && <span className={change > 0 ? 'text-positive' : change < 0 ? 'text-negative' : ''}> · {change > 0 ? `+${change}` : change}</span>}
         </p>
       </div>

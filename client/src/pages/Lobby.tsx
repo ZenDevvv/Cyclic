@@ -1,20 +1,24 @@
 // The lobby answers "how do I get into a game right now?": quick match first, then friends, then open rooms.
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { gradeName, scoreText } from '../../../shared/notation.ts';
 import { DEFAULT_ROOM_SETTINGS, PRESETS, PRESET_IDS, timeControlLabel, type PresetId, type RoomSettings } from '../../../shared/presets.ts';
 import type { GameSummary, LeaderboardRow, LiveGame, OpenRoom, PlayerProfile, Visibility } from '../../../shared/protocol.ts';
 import { Button, ButtonLink } from '../components/ui/Button.tsx';
 import { Dialog } from '../components/ui/Dialog.tsx';
 import { EmptyState, ID_FONT, Panel, Pill, SideDot, Skeleton } from '../components/ui/controls.tsx';
+import { MathText } from '../components/ui/MathText.tsx';
 import { GameRow } from '../components/GameRow.tsx';
+import { GradePicker } from '../components/GradePicker.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { MiniBoard } from '../components/board/MiniBoard.tsx';
 import { SettingsEditor } from '../components/RoomSettingsEditor.tsx';
 import { request, subscribeLobby } from '../lib/socket.ts';
-import { clock, MISSING, peso, plural, relativeTime, useNow } from '../lib/format.ts';
+import { clock, MISSING, plural, relativeTime, useNow } from '../lib/format.ts';
 import { useApi } from '../lib/useApi.ts';
 import { useTitle } from '../lib/useTitle.ts';
 import { useLobby } from '../store/lobby.ts';
+import { usePrefs } from '../store/prefs.ts';
 import { useSession } from '../store/session.ts';
 import { toast } from '../store/toast.ts';
 
@@ -41,7 +45,7 @@ export function Lobby() {
       navigate('/play', { replace: true, state: null });
     } else if (intent.quick && connection === 'online') {
       navigate('/play', { replace: true, state: null });
-      void request('queue:join', { preset: intent.quick }).then((res) => {
+      void request('queue:join', { preset: intent.quick, grade: usePrefs.getState().grade }).then((res) => {
         if (!res.ok) toast(res.message, { tone: 'negative' });
       });
     }
@@ -107,10 +111,13 @@ function QuickMatch({ className = '' }: { className?: string }) {
   const seatCode = useLobby((s) => s.seatCode);
   const now = useNow(1000, !!queue.preset);
   const [busy, setBusy] = useState<PresetId | null>(null);
+  const prefs = usePrefs();
+  // While you are in a queue, the panel shows that queue, whatever grade you last chose.
+  const grade = queue.grade ?? prefs.grade;
 
   const join = async (preset: PresetId) => {
     setBusy(preset);
-    const res = await request('queue:join', { preset });
+    const res = await request('queue:join', { preset, grade });
     setBusy(null);
     if (!res.ok) toast(res.message, { tone: 'negative' });
   };
@@ -123,11 +130,14 @@ function QuickMatch({ className = '' }: { className?: string }) {
       action={<span className="text-meta text-muted">Rated · paired by rating</span>}
       className={`flex flex-col ${className}`}
     >
+      <div className="mb-3">
+        <GradePicker value={grade} disabled={!!queue.preset} onChange={(g) => prefs.set({ grade: g })} />
+      </div>
       <div className="grid gap-2.5 sm:grid-cols-3">
         {PRESET_IDS.map((id) => {
           const p = PRESETS[id];
           const searching = queue.preset === id;
-          const waiting = counts?.[7][id] ?? 0;
+          const waiting = counts?.[grade][id] ?? 0;
           return (
             <button
               key={id}
@@ -160,7 +170,7 @@ function QuickMatch({ className = '' }: { className?: string }) {
         {queue.preset ? (
           <>
             <p className="text-body text-muted" aria-live="polite">
-              Looking for a {PRESETS[queue.preset].name.toLowerCase()} opponent near your rating. The window widens the longer you wait.
+              Looking for a Grade {grade} {PRESETS[queue.preset].name.toLowerCase()} opponent near your rating. The window widens the longer you wait.
             </p>
             <Button variant="secondary" onClick={cancel}>
               Cancel
@@ -282,7 +292,7 @@ function OpenRoomRow({ room }: { room: OpenRoom }) {
           <span className="num text-meta text-faint">{room.host.rating}</span>
         </p>
         <p className="num truncate text-meta text-muted">
-          {timeControlLabel(room.settings)}
+          {gradeName(room.settings.grade)} · {timeControlLabel(room.settings)}
           {room.settings.maxCapture ? '' : ' · any capture'}
           {' · '}
           {room.joinerSide === 'random' ? 'random sides' : `you play ${room.joinerSide}`}
@@ -299,7 +309,7 @@ function OpenRoomRow({ room }: { room: OpenRoom }) {
 function LiveRow({ game }: { game: LiveGame }) {
   return (
     <li className="animate-row flex items-center gap-3 border-b border-rule py-2.5 last:border-b-0">
-      <MiniBoard code={game.board} size={44} label={`${game.red.name} against ${game.blue.name}`} />
+      <MiniBoard code={game.board} grade={game.settings.grade} size={44} label={`${game.red.name} against ${game.blue.name}`} />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 truncate font-medium">
           <SideDot side="red" />
@@ -309,7 +319,7 @@ function LiveRow({ game }: { game: LiveGame }) {
           <span className="truncate">{game.blue.name}</span>
         </p>
         <p className="num truncate text-meta text-muted">
-          {peso(game.scores.red)}–{peso(game.scores.blue)} · {game.turn} to move · {timeControlLabel(game.settings)}
+          <MathText>{`${scoreText(game.scores.red, game.settings.grade)} to ${scoreText(game.scores.blue, game.settings.grade)}`}</MathText> · {game.turn} to move · {gradeName(game.settings.grade)} · {timeControlLabel(game.settings)}
           {game.spectators ? ` · ${game.spectators} watching` : ''}
         </p>
       </div>
@@ -357,7 +367,7 @@ function RecentGames() {
                         {g.red.name} <span className="font-normal text-faint">vs</span> {g.blue.name}
                       </p>
                       <p className="num text-body text-muted">
-                        {g.winner ? `${g[g.winner].name} won` : 'Draw'} · ₱{g.scores.red}–₱{g.scores.blue} · {relativeTime(g.endedAt)}
+                        {g.winner ? `${g[g.winner].name} won` : 'Draw'} · <MathText>{`${scoreText(g.scores.red, g.grade)} to ${scoreText(g.scores.blue, g.grade)}`}</MathText> · {gradeName(g.grade)} · {relativeTime(g.endedAt)}
                       </p>
                     </div>
                     <Link to={`/game/${g.id}`} className="text-body text-muted hover:text-ink">
@@ -413,7 +423,8 @@ function TopPlayers() {
 
 function CreateRoomDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
+  const prefs = usePrefs();
+  const [settings, setSettings] = useState<RoomSettings>({ ...DEFAULT_ROOM_SETTINGS, grade: prefs.grade });
   const [visibility, setVisibility] = useState<Visibility>('private');
   const [busy, setBusy] = useState(false);
 
@@ -437,6 +448,7 @@ function CreateRoomDialog({ open, onClose }: { open: boolean; onClose: () => voi
         visibility={visibility}
         onChange={(patch, vis) => {
           setSettings((s) => ({ ...s, ...patch }));
+          if (patch.grade) prefs.set({ grade: patch.grade });
           if (vis) setVisibility(vis);
         }}
       />

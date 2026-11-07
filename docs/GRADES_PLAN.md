@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 to 5 built on 2026-11-07; Phases 6–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 to 6 built on 2026-11-07; Phases 7–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -171,7 +171,7 @@ in every grade, which suits a beginner but may be weaker than the name suggests.
 - `queue:join` without a grade means Grade 7, so a client from before a deploy still works.
 - `server/server.test.ts`: a room plays and saves a non-default grade, and quick match never pairs two grades.
 
-### Phase 6: client (large)
+### Phase 6: client (large) — built
 
 - **Picking a grade:** `RoomSettingsEditor.tsx`, the Lobby quick-match block, and bot and local setup in
   `LocalGame.tsx`. Remember the last grade in `store/prefs.ts`.
@@ -186,6 +186,11 @@ in every grade, which suits a beginner but may be weaker than the name suggests.
 - **Saved local games:** add the grade; old saves load as Grade 7.
 - **Title screen:** stays Grade 7. `useAttractGame.ts` and "Play from here" need no change beyond Phase 1.
 - `MiniBoard.tsx` hard-codes `data-board="felt"` and needs the game's grade.
+- **Exponents:** Inter's web font only has ¹ ² ³, so `MathText` and the chips draw exponents as real superscripts.
+- **Score sheet:** `ScoreSheet.tsx` shows the columns above the ledger in Grades 7 and 10. Grade 10's score reads 0 until
+  a side has both grams and °C, so this is what shows its game moving.
+- **Results:** Grade 10's dialog lists its columns, because captures and chips left do not add up to its final.
+- **Profile:** the best and average score figures are gone: best meant highest, and each grade has its own unit.
 
 ### Phase 7: grade themes (small to medium)
 

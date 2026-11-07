@@ -1,8 +1,9 @@
 // The capture ledger: the move list written as the equations each capture scored.
 import { useEffect, useMemo, useRef } from 'react';
-import { KWH_RATE, type Side, type StepRecord } from '../../../../shared/engine.ts';
-import { chipLabel, coord, equationParts } from '../../../../shared/notation.ts';
+import type { Grade, Side, StepRecord } from '../../../../shared/engine.ts';
+import { chipLabel, coord, equationParts, scoringGuide } from '../../../../shared/notation.ts';
 import { SideDot } from '../ui/controls.tsx';
+import { MathText } from '../ui/MathText.tsx';
 
 interface Turn {
   turn: number;
@@ -22,6 +23,7 @@ function groupTurns(records: readonly StepRecord[]): Turn[] {
 
 interface Props {
   records: readonly StepRecord[];
+  grade?: Grade;
   /** Replay: index of the step being shown (−1 = start). Clicking a step selects it. */
   current?: number;
   onSelect?: (index: number) => void;
@@ -29,7 +31,7 @@ interface Props {
   className?: string;
 }
 
-export function Ledger({ records, current, onSelect, emptyText = 'No moves yet. Red moves first.', className = '' }: Props) {
+export function Ledger({ records, grade = 7, current, onSelect, emptyText = 'No moves yet. Red moves first.', className = '' }: Props) {
   const turns = useMemo(() => groupTurns(records), [records]);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -63,7 +65,7 @@ export function Ledger({ records, current, onSelect, emptyText = 'No moves yet. 
       {turns.length === 0 ? (
         <div className="py-3">
           <p className="text-body text-muted">{emptyText}</p>
-          <ScoringGuide />
+          <ScoringGuide grade={grade} />
         </div>
       ) : (
         <ol className="flex flex-col">
@@ -85,26 +87,27 @@ export function Ledger({ records, current, onSelect, emptyText = 'No moves yet. 
 }
 
 /** Shown while the ledger is empty: how a capture scores, in the ledger's own format. */
-function ScoringGuide() {
-  const rows: [string, string, boolean][] = [
-    ['₱8 + ₱4 = ₱12', '+₱12', true],
-    ['₱8 − ₱4 = ₱4', '+₱4', true],
-    [`5 kWh + 3 kWh = 8 kWh · ×${KWH_RATE} ₱/kWh`, `+₱${8 * KWH_RATE}`, true],
-    ['₱8 × ₱4 = NS', 'Not pesos', false],
-    ['₱8 + 3 kWh = NS', 'Units differ', false],
-  ];
+function ScoringGuide({ grade }: { grade: Grade }) {
+  const { equations, note } = scoringGuide(grade);
   return (
     <div className="mt-5">
       <p className="mb-1 text-meta text-faint">How a capture scores: the sign under the landing square combines the two chips.</p>
       <ul>
-        {rows.map(([eq, out, scored]) => (
-          <li key={eq} className="num flex items-baseline justify-between gap-3 border-b border-rule py-1.5 text-body last:border-b-0">
-            <span className="truncate text-muted">{eq}</span>
-            <span className={scored ? 'flex-none font-semibold text-accent' : 'flex-none text-meta text-faint'}>{out}</span>
-          </li>
-        ))}
+        {equations.map((equation) => {
+          const eq = equationParts(equation);
+          return (
+            <li key={eq.left} className="num flex items-baseline justify-between gap-3 border-b border-rule py-1.5 text-body last:border-b-0">
+              <span className="min-w-0 text-muted">
+                <MathText>{`${eq.left} = ${eq.result}${eq.factors.length > 0 ? ` · ${eq.factors.join(' · ')}` : ''}`}</MathText>
+              </span>
+              <span className={eq.scored ? 'flex-none font-semibold text-accent' : 'flex-none text-meta text-faint'}>
+                <MathText>{eq.scored ? `+${eq.points}` : eq.reason!}</MathText>
+              </span>
+            </li>
+          );
+        })}
       </ul>
-      <p className="mt-2 text-meta text-faint">A dama doubles the result; taking a dama doubles it again.</p>
+      <p className="mt-2 text-meta text-faint">{note} The lowest total wins.</p>
     </div>
   );
 }
@@ -114,8 +117,10 @@ function StepLine({ r, current, onSelect }: { r: StepRecord; current: boolean; o
   const body = (
     <>
       <span className="flex items-baseline justify-between gap-2">
-        <span className="truncate">
-          <span className="font-medium text-ink">{chipLabel(r.piece)}</span>
+        <span className="min-w-0">
+          <span className="font-medium text-ink">
+            <MathText>{chipLabel(r.piece)}</MathText>
+          </span>
           {r.piece.king && <span className="text-muted"> dama</span>}
           <span className="num text-muted">
             {' '}
@@ -127,12 +132,14 @@ function StepLine({ r, current, onSelect }: { r: StepRecord; current: boolean; o
       </span>
       {eq && (
         <span className="mt-0.5 flex items-baseline justify-between gap-3">
-          <span className="num truncate text-muted">
-            {eq.left} = {eq.result}
+          <span className="num min-w-0 text-muted">
+            <MathText>{`${eq.left} = ${eq.result}`}</MathText>
             {eq.factors.length > 0 && <span className="text-faint"> · {eq.factors.join(' · ')}</span>}
           </span>
           {eq.scored ? (
-            <span className="num flex-none font-semibold text-accent">+₱{r.points}</span>
+            <span className="num flex-none font-semibold text-accent">
+              <MathText>{`+${eq.points}`}</MathText>
+            </span>
           ) : (
             <span className="flex-none text-meta text-faint">{eq.reason}</span>
           )}

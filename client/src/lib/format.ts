@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { scoreText } from '../../../shared/notation.ts';
 
 /** A missing value in a data cell (app-screen rule: a grey dash, never a blank). */
 export const MISSING = '—'; // taste-skill-ignore: data placeholder, not copy
@@ -26,8 +25,6 @@ export function relativeTime(ts: number, now = Date.now()): string {
 }
 
 export const signed = (n: number): string => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
-
-export const peso = (n: number): string => scoreText(n);
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 

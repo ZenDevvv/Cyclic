@@ -526,7 +526,7 @@ function WaysSection({ board }: { board: string }) {
         or practise with the bot{' '}
         <Slot label="A board in play">
           <span className="block h-full overflow-hidden rounded-full">
-            <MiniBoard code={board} size={64} label="A board in play" />
+            <MiniBoard code={board} grade={7} size={64} label="A board in play" />
           </span>
         </Slot>
         . Every capture is a sum{' '}

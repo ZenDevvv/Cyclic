@@ -1,10 +1,10 @@
 // A light SVG thumbnail of a position (lists and cards), drawn from a codec string.
 import { memo, useMemo } from 'react';
 import { decodeBoard } from '../../../../shared/codec.ts';
-import { xOf, yOf } from '../../../../shared/engine.ts';
+import { xOf, yOf, type Grade } from '../../../../shared/engine.ts';
 
-export const MiniBoard = memo(function MiniBoard({ code, size = 48, orientation = 'red', label }: { code: string; size?: number; orientation?: 'red' | 'blue'; label?: string }) {
-  const board = useMemo(() => decodeBoard(code), [code]);
+export const MiniBoard = memo(function MiniBoard({ code, grade, size = 48, orientation = 'red', label }: { code: string; grade: Grade; size?: number; orientation?: 'red' | 'blue'; label?: string }) {
+  const board = useMemo(() => decodeBoard(code, grade), [code, grade]);
   return (
     <svg width={size} height={size} viewBox="0 0 8 8" role="img" aria-label={label ?? 'Board position'} className="flex-none overflow-hidden rounded-chip" data-board="felt" data-ui>
       <rect width="8" height="8" fill="var(--sq-dark)" />

@@ -27,7 +27,7 @@ import {
 } from './engine.ts';
 import { chooseTurn, evaluate, type BotLevel } from './bot.ts';
 import { encodeBoard, decodeBoard } from './codec.ts';
-import { equationParts, equationText, finalText, scoreText, stepText } from './notation.ts';
+import { chipFace, equationParts, equationText, finalText, gradeName, previewText, scoreText, scoringGuide, stepText } from './notation.ts';
 
 const ALL: Grade[] = [7, 8, 9, 10];
 const OPS: Op[] = ['add', 'sub', 'mul', 'div'];
@@ -453,4 +453,65 @@ test('bot: skill decides every grade, so medium beats easy', () => {
     }
     assert.ok(wins >= 6, `grade ${grade}: medium won ${wins} of 8`);
   }
+});
+
+// ------------------------------------------------------------------ what players read
+
+test('chips print a figure and, when it will not fit beside it, a unit underneath', () => {
+  assert.deepEqual(chipFace({ unit: 'P', value: 12 }), { main: '₱12', sub: null });
+  assert.deepEqual(chipFace({ unit: 'kWh', value: 11 }), { main: '11', sub: 'kWh' });
+  assert.deepEqual(chipFace({ unit: 'sci', value: 1.212e12 }), { main: '1.212', sub: '×10¹²' });
+  assert.deepEqual(chipFace({ unit: 'sci', value: 1.1e-1 }), { main: '1.1', sub: '×10⁻¹' });
+  assert.deepEqual(chipFace({ unit: 'pct', value: 25 }), { main: '25%', sub: null });
+  assert.deepEqual(chipFace({ unit: 'F', value: 120 }), { main: '120', sub: '°F' });
+  assert.deepEqual(chipFace({ unit: 'g', value: 37 }), { main: '37', sub: 'g' });
+  assert.deepEqual(chipFace({ unit: 'C', value: 55 }), { main: '55', sub: '°C' });
+});
+
+test('every chip in every grade fits the chip face', () => {
+  for (const grade of ALL) {
+    for (const c of GRADES[grade].chips) {
+      const { main, sub } = chipFace(c);
+      assert.ok(main.length <= 5, `${main} is too long`);
+      assert.ok((sub ?? '').length <= 6, `${sub} is too long`);
+    }
+  }
+});
+
+test('grades are named the same way everywhere', () => {
+  assert.equal(gradeName(7), 'Grade 7 · Electro');
+  assert.equal(gradeName(8), 'Grade 8 · Scientific Notation');
+  assert.equal(gradeName(9), 'Grade 9 · THI');
+  assert.equal(gradeName(10), 'Grade 10 · Thermo');
+});
+
+test('landing squares show a short preview in each grade', () => {
+  assert.equal(previewText(scoreCapture(chip('P', 8), chip('P', 4), 'add', 7)), '+₱12');
+  assert.equal(previewText(scoreCapture(chip('kWh', 5), chip('kWh', 3), 'add', 7)), '+₱40');
+  assert.equal(previewText(scoreCapture(chip('P', 8), chip('P', 4), 'mul', 7)), 'NS');
+  assert.equal(previewText(scoreCapture(chip('sci', 1.212e12), chip('sci', 8.8e8), 'mul', 8)), '+1.1×10²¹');
+  assert.equal(previewText(scoreCapture(chip('sci', 2.2e2), chip('sci', 2.2e2), 'sub', 8)), '+0');
+  assert.equal(previewText(scoreCapture(chip('pct', 25), chip('pct', 40), 'add', 9)), '+91°F');
+  assert.equal(previewText(scoreCapture(chip('g', 37), chip('C', 11), 'mul', 10)), '+407 g·°C');
+});
+
+test('the scoring guide is worked by the engine, and shows scoring and non-scoring captures', () => {
+  for (const grade of ALL) {
+    const { equations, note } = scoringGuide(grade);
+    assert.ok(note.length > 0);
+    assert.ok(equations.length >= 4, `grade ${grade}`);
+    assert.ok(equations.some((eq) => eq.base !== null), `grade ${grade} shows a score`);
+    assert.ok(equations.some((eq) => eq.base === null), `grade ${grade} shows no score`);
+    for (const eq of equations) {
+      const parts = equationParts(eq);
+      assert.ok(parts.scored || parts.reason, `grade ${grade}: ${parts.left} needs a reason`);
+    }
+    for (const eq of equations) {
+      const allowed = GRADES[grade].chips.some((c) => c.unit === eq.a.unit);
+      assert.ok(allowed, `grade ${grade} uses its own units`);
+    }
+  }
+  assert.equal(equationText(scoringGuide(7).equations[2]), '5 kWh + 3 kWh = 8 kWh · ×5 ₱/kWh = ₱40');
+  assert.equal(equationText(scoringGuide(9).equations[0]), '25% + 40% = 65% → 91°F');
+  assert.equal(equationText(scoringGuide(10).equations[2]), '37 g × 11°C = 407 g·°C');
 });

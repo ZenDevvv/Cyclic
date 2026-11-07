@@ -1,7 +1,7 @@
 // Offline play on this device: against the bot (in a worker) or pass-and-play. Not rated, kept across reloads.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { endGame, forcedStep, other, replay, type GameState, type Side, type Step, type StepRecord } from '../../../shared/engine.ts';
-import { captureNotice } from '../../../shared/notation.ts';
+import { endGame, forcedStep, other, replay, type GameState, type Grade, type Side, type Step, type StepRecord } from '../../../shared/engine.ts';
+import { captureNotice, gradeName } from '../../../shared/notation.ts';
 import { AUTO_CAPTURE_MS } from '../../../shared/presets.ts';
 import { BOT_LEVELS, type BotLevel } from '../../../shared/bot.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
@@ -9,6 +9,8 @@ import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
 import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
+import { ScoreSheet } from '../components/game/ScoreSheet.tsx';
+import { GradePicker } from '../components/GradePicker.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, IconButton } from '../components/ui/Button.tsx';
 import { Dialog } from '../components/ui/Dialog.tsx';
@@ -23,6 +25,8 @@ type Mode = 'bot' | 'local';
 
 interface Saved {
   steps: Step[];
+  /** Saves from before grades, and the title screen's demo, are Grade 7. */
+  grade?: Grade;
   level: BotLevel;
   you: Side;
   resigned?: Side | null;
@@ -35,7 +39,7 @@ function load(mode: Mode): Saved | null {
     const raw = localStorage.getItem(key(mode));
     if (!raw) return null;
     const s = JSON.parse(raw) as Saved;
-    replay(s.steps); // throws if the saved game is not valid
+    replay(s.steps, { grade: s.grade ?? 7 }); // throws if the saved game is not valid
     return s;
   } catch {
     return null;
@@ -54,7 +58,8 @@ export function LocalGame({ mode }: { mode: Mode }) {
   useTitle(mode === 'bot' ? 'Play the bot' : 'Pass and play');
   const prefs = usePrefs();
   const me = useSession((s) => s.me);
-  const [game, setGame] = useState<Saved>(() => load(mode) ?? { steps: [], level: prefs.botLevel, you: 'red', resigned: null });
+  const [game, setGame] = useState<Saved>(() => load(mode) ?? { steps: [], grade: prefs.grade, level: prefs.botLevel, you: 'red', resigned: null });
+  const grade = game.grade ?? 7;
   const [setupOpen, setSetupOpen] = useState(() => mode === 'bot' && !load(mode));
   const [resultOpen, setResultOpen] = useState(false);
   const [thinking, setThinking] = useState(false);
@@ -66,11 +71,11 @@ export function LocalGame({ mode }: { mode: Mode }) {
   }, [mode, game]);
 
   const { state, records } = useMemo(() => {
-    const r = replay(game.steps);
+    const r = replay(game.steps, { grade });
     let state: GameState = r.state;
     if (game.resigned && !state.result) state = endGame(state, 'resign', other(game.resigned));
     return { state, records: r.records };
-  }, [game.steps, game.resigned]);
+  }, [game.steps, game.resigned, grade]);
 
   const last: StepRecord | null = records[records.length - 1] ?? null;
   const mark: BoardMark | null = last
@@ -144,11 +149,12 @@ export function LocalGame({ mode }: { mode: Mode }) {
   const newGame = (patch: Partial<Saved> = {}) => {
     cancelRef.current();
     setResultOpen(false);
-    const next: Saved = { steps: [], level: game.level, you: game.you, resigned: null, ...patch };
+    const next: Saved = { steps: [], grade, level: game.level, you: game.you, resigned: null, ...patch };
     seen.current = 0;
     wasOver.current = false;
     setGame(next);
     if (patch.level) prefs.set({ botLevel: patch.level });
+    if (patch.grade) prefs.set({ grade: patch.grade });
   };
 
   // Taking back an auto-capture would only make it play again, so go back to the last real choice.
@@ -180,7 +186,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
       : { red: { name: 'Red', tag: 'Player 1' }, blue: { name: 'Blue', tag: 'Player 2' } };
 
   const strip = (side: Side) => (
-    <PlayerStrip side={side} player={players[side]} score={state.scores[side]} toMove={state.turn === side} moveLeft={null} moveSeconds={0} now={Date.now()} over={!!state.result} />
+    <PlayerStrip side={side} player={players[side]} grade={grade} score={state.scores[side]} toMove={state.turn === side} moveLeft={null} moveSeconds={0} now={Date.now()} over={!!state.result} />
   );
 
   return (
@@ -193,11 +199,11 @@ export function LocalGame({ mode }: { mode: Mode }) {
               <h1 className="text-title">{mode === 'bot' ? 'Play the bot' : 'Pass and play'}</h1>
               <p className="text-body text-muted">
                 {mode === 'bot'
-                  ? `${levelName} bot · you play ${game.you} · not rated, saved on this device`
-                  : 'Two players, one screen · saved on this device'}
+                  ? `${gradeName(grade)} · ${levelName} bot · you play ${game.you} · not rated, saved on this device`
+                  : `${gradeName(grade)} · two players, one screen · saved on this device`}
               </p>
             </div>
-            <Button variant="secondary" onClick={() => (mode === 'bot' ? setSetupOpen(true) : newGame())}>
+            <Button variant="secondary" onClick={() => setSetupOpen(true)}>
               New game
             </Button>
           </div>
@@ -225,7 +231,8 @@ export function LocalGame({ mode }: { mode: Mode }) {
                 {state.result ? resultTitle(state.result, players, mode === 'bot' ? game.you : null) : `Turn ${state.turnNumber}`}
               </span>
             </div>
-            <Ledger records={records} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
+            <ScoreSheet grade={grade} columns={state.columns} />
+            <Ledger records={records} grade={grade} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
           </>
         }
         actions={
@@ -257,6 +264,8 @@ export function LocalGame({ mode }: { mode: Mode }) {
           open={resultOpen}
           onClose={() => setResultOpen(false)}
           result={state.result}
+          grade={grade}
+          columns={state.columns}
           captures={state.scores}
           players={players}
           mySide={mode === 'bot' ? game.you : null}
@@ -270,15 +279,26 @@ export function LocalGame({ mode }: { mode: Mode }) {
         </ResultDialog>
       )}
 
-      {mode === 'bot' && (
+      {mode === 'bot' ? (
         <BotSetup
           open={setupOpen}
           onClose={() => setSetupOpen(false)}
+          grade={grade}
           level={game.level}
           you={game.you}
-          onStart={(level, you) => {
+          onStart={(g, level, you) => {
             setSetupOpen(false);
-            newGame({ level, you });
+            newGame({ grade: g, level, you });
+          }}
+        />
+      ) : (
+        <LocalSetup
+          open={setupOpen}
+          onClose={() => setSetupOpen(false)}
+          grade={grade}
+          onStart={(g) => {
+            setSetupOpen(false);
+            newGame({ grade: g });
           }}
         />
       )}
@@ -286,24 +306,47 @@ export function LocalGame({ mode }: { mode: Mode }) {
   );
 }
 
+function LocalSetup({ open, onClose, grade: initialGrade, onStart }: { open: boolean; onClose: () => void; grade: Grade; onStart: (grade: Grade) => void }) {
+  const [grade, setGrade] = useState<Grade>(initialGrade);
+  return (
+    <Dialog open={open} onClose={onClose} title="Pass and play" description="Two players take turns on this device.">
+      <div className="flex flex-col gap-5">
+        <GradePicker value={grade} onChange={setGrade} />
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={() => onStart(grade)}>
+            Start game
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 function BotSetup({
   open,
   onClose,
+  grade: initialGrade,
   level: initialLevel,
   you: initialSide,
   onStart,
 }: {
   open: boolean;
   onClose: () => void;
+  grade: Grade;
   level: BotLevel;
   you: Side;
-  onStart: (level: BotLevel, you: Side) => void;
+  onStart: (grade: Grade, level: BotLevel, you: Side) => void;
 }) {
+  const [grade, setGrade] = useState<Grade>(initialGrade);
   const [level, setLevel] = useState<BotLevel>(initialLevel);
   const [side, setSide] = useState<Side | 'random'>(initialSide);
   return (
     <Dialog open={open} onClose={onClose} title="Play the bot" description="Practice on this device. Games against the bot are not rated.">
       <div className="flex flex-col gap-5">
+        <GradePicker value={grade} onChange={setGrade} />
         <div>
           <p className="mb-2 text-body font-medium">Strength</p>
           <Segmented label="Strength" value={level} onChange={setLevel} options={BOT_LEVELS.map((l) => ({ value: l.id, label: l.name }))} />
@@ -326,7 +369,7 @@ function BotSetup({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => onStart(level, side === 'random' ? (Math.random() < 0.5 ? 'red' : 'blue') : side)}>
+          <Button variant="primary" onClick={() => onStart(grade, level, side === 'random' ? (Math.random() < 0.5 ? 'red' : 'blue') : side)}>
             Start game
           </Button>
         </div>

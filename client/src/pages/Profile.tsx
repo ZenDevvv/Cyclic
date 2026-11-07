@@ -43,13 +43,11 @@ export default function Profile() {
   const decided = u.wins + u.losses;
   const winRate = u.games ? Math.round((u.wins / u.games) * 100) : null;
   const peak = Math.max(...data.history.map((h) => h.rating));
-  // Figures from the recent games on this page.
+  // The run of results in the recent games on this page. Scores are not compared: each grade has its own unit.
   const mine = data.recent.map((g) => {
     const side = g.red.id === u.id ? 'red' : 'blue';
-    return { score: g.scores[side], won: g.winner === side, lost: g.winner !== null && g.winner !== side };
+    return { won: g.winner === side, lost: g.winner !== null && g.winner !== side };
   });
-  const best = mine.length ? Math.max(...mine.map((m) => m.score)) : null;
-  const avg = mine.length ? Math.round(mine.reduce((n, m) => n + m.score, 0) / mine.length) : null;
   let streak = 0;
   const streakKind = mine[0]?.won ? 'won' : mine[0]?.lost ? 'lost' : null;
   for (const m of mine) {
@@ -104,14 +102,10 @@ export default function Profile() {
             <dd className="num text-right">{winRate === null ? MISSING : `${winRate}%`}</dd>
             <dt className="text-muted">Decisive games</dt>
             <dd className="num text-right">{decided}</dd>
-            <dt className="text-muted">Best final score</dt>
-            <dd className="num text-right">{best === null ? MISSING : `₱${best}`}</dd>
-            <dt className="text-muted">Average final score</dt>
-            <dd className="num text-right">{avg === null ? MISSING : `₱${avg}`}</dd>
             <dt className="text-muted">Current run</dt>
             <dd className="num text-right">{streakKind && streak ? `${streakKind === 'won' ? 'Won' : 'Lost'} ${streak} in a row` : MISSING}</dd>
           </dl>
-          {data.recent.length > 0 && <p className="mt-3 text-meta text-faint">Scores and runs are from the last {plural(data.recent.length, 'game')}.</p>}
+          {data.recent.length > 0 && <p className="mt-3 text-meta text-faint">The run is from the last {plural(data.recent.length, 'game')}.</p>}
         </Panel>
       </div>
 

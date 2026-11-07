@@ -1,7 +1,9 @@
 // Chips: "flat" is drawn here in SVG after the original chip art; "classic" is the original art itself.
 import { memo } from 'react';
 import type { Piece } from '../../../../shared/engine.ts';
+import { chipFace } from '../../../../shared/notation.ts';
 import type { PieceSet } from '../../store/prefs.ts';
+import { plainExponent } from '../ui/MathText.tsx';
 
 const NOTCHES = Array.from({ length: 8 }, (_, i) => i * 45 + 22.5);
 
@@ -9,7 +11,8 @@ const CROWN = 'M30 30 L35 16 L43 25 L50 12 L57 25 L65 16 L70 30 Z';
 
 export const Chip = memo(function Chip({ piece, set = 'flat' }: { piece: Pick<Piece, 'side' | 'unit' | 'value' | 'king'>; set?: PieceSet }) {
   const ring = piece.side === 'red' ? 'var(--red-chip)' : 'var(--blue-chip)';
-  if (set === 'classic') {
+  // The original art only exists for Grade 7's chips.
+  if (set === 'classic' && (piece.unit === 'P' || piece.unit === 'kWh')) {
     const src = `/pieces/classic/${piece.side}-${piece.unit === 'P' ? 'p' : 'kwh'}${piece.value}.webp`;
     return (
       <span className="relative block size-full">
@@ -22,8 +25,10 @@ export const Chip = memo(function Chip({ piece, set = 'flat' }: { piece: Pick<Pi
       </span>
     );
   }
-  const kwh = piece.unit === 'kWh';
-  const valueY = piece.king ? (kwh ? 56 : 62) : kwh ? 50 : 57;
+  const { main, sub } = chipFace(piece);
+  const exponent = sub?.startsWith('×10') ? sub.slice(3) : null;
+  const valueY = piece.king ? (sub ? 56 : 62) : sub ? 50 : 57;
+  const mainSize = main.length > 4 ? 17 : sub ? (main.length > 1 ? 22 : 24) : main.length > 2 ? 20 : 23;
   return (
     <svg viewBox="0 0 100 100" className="block size-full" aria-hidden="true">
       <circle cx="50" cy="50" r="47" fill={ring} />
@@ -41,23 +46,32 @@ export const Chip = memo(function Chip({ piece, set = 'flat' }: { piece: Pick<Pi
         textAnchor="middle"
         fontFamily="Inter Variable, system-ui, sans-serif"
         fontWeight="650"
-        fontSize={kwh ? (piece.value > 9 ? 22 : 24) : piece.value > 9 ? 20 : 23}
+        fontSize={mainSize}
         fill="var(--chip-ink)"
         letterSpacing="-0.5"
       >
-        {kwh ? piece.value : `₱${piece.value}`}
+        {main}
       </text>
-      {kwh && (
+      {sub && (
         <text
           x="50"
-          y={valueY + 13}
+          y={valueY + (exponent ? 15 : 13)}
           textAnchor="middle"
           fontFamily="Inter Variable, system-ui, sans-serif"
           fontWeight="600"
-          fontSize="11"
+          fontSize={exponent ? 15 : 11}
           fill="var(--chip-ink)"
         >
-          kWh
+          {exponent ? (
+            <>
+              ×10
+              <tspan dy="-4" fontSize="11">
+                {plainExponent(exponent)}
+              </tspan>
+            </>
+          ) : (
+            sub
+          )}
         </text>
       )}
     </svg>

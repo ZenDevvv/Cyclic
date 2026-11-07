@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { forcedStep, initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
-import { captureNotice } from '../../../shared/notation.ts';
+import { captureNotice, gradeName } from '../../../shared/notation.ts';
 import { timeControlLabel, type RoomSettings } from '../../../shared/presets.ts';
 import type { RoomSnapshot, SeatView, Visibility } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
@@ -10,6 +10,7 @@ import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
 import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
+import { ScoreSheet } from '../components/game/ScoreSheet.tsx';
 import { Chat } from '../components/game/Chat.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, ButtonLink, IconButton } from '../components/ui/Button.tsx';
@@ -216,7 +217,7 @@ function WaitingRoom({ snap, spectator }: { snap: RoomSnapshot; spectator: boole
 
       <div className="grid gap-3.5 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3.5">
-          <Board board={initialBoard()} orientation={mySide ?? 'red'} label="Starting position" />
+          <Board board={initialBoard(snap.settings.grade)} grade={snap.settings.grade} orientation={mySide ?? 'red'} label="Starting position" />
           <p className="text-meta text-muted">
             Starting position. Red moves first; the operator under a capture's landing square sets its score.{' '}
             <Link to="/learn" className="text-ink underline-offset-4 hover:underline">
@@ -271,6 +272,8 @@ function WaitingRoom({ snap, spectator }: { snap: RoomSnapshot; spectator: boole
               <SettingsEditor settings={snap.settings} visibility={snap.visibility} onChange={update} />
             ) : (
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-body">
+                <dt className="text-muted">Grade</dt>
+                <dd>{gradeName(snap.settings.grade)}</dd>
                 <dt className="text-muted">Clock</dt>
                 <dd>{timeControlLabel(snap.settings)}</dd>
                 <dt className="text-muted">Capturing</dt>
@@ -394,6 +397,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
     <PlayerStrip
       side={side}
       player={players[side]}
+      grade={snap.settings.grade}
       score={state.scores[side]}
       toMove={state.turn === side}
       moveLeft={moveLeft}
@@ -444,7 +448,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
               {players.red?.name ?? 'Red'} <span className="text-faint">vs</span> {players.blue?.name ?? 'Blue'}
             </h1>
             <p className="num text-meta text-muted">
-              {snap.mode === 'quick' ? 'Quick match' : 'Room'} <span className={ID_FONT}>{snap.code}</span> · {snap.settings.rated ? 'Rated' : 'Casual'}
+              {snap.mode === 'quick' ? 'Quick match' : 'Room'} <span className={ID_FONT}>{snap.code}</span> · {gradeName(snap.settings.grade)} · {snap.settings.rated ? 'Rated' : 'Casual'}
               {snap.spectators.length ? ` · ${plural(snap.spectators.length, 'spectator')}` : ''}
             </p>
           </div>
@@ -504,7 +508,8 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
                     ? `${resultTitle(state.result, players, mySide)} · ₱${state.result.final.red}–₱${state.result.final.blue}`
                     : `Turn ${state.turnNumber} · ${timeControlLabel(snap.settings)}`}
                 </p>
-                <Ledger records={records} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
+                <ScoreSheet grade={snap.settings.grade} columns={state.columns} />
+                <Ledger records={records} grade={snap.settings.grade} className="mt-1 min-h-0 flex-1 px-5.5 pt-1 pb-3" />
               </>
             ) : (
               <Chat messages={chat} canSend className="min-h-0 flex-1 px-5.5 pb-4" />
@@ -578,6 +583,8 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
           open={resultOpen}
           onClose={() => setResultOpen(false)}
           result={state.result}
+          grade={snap.settings.grade}
+          columns={state.columns}
           captures={state.scores}
           players={players}
           mySide={mySide}

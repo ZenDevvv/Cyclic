@@ -1,22 +1,28 @@
 import type { ReactNode } from 'react';
-import type { GameResult, Side } from '../../../../shared/engine.ts';
-import { END_REASON_TEXT } from '../../../../shared/notation.ts';
+import { GRADES, type Column, type Columns, type GameResult, type Grade, type Side } from '../../../../shared/engine.ts';
+import { END_REASON_TEXT, finalText, quantity, scoreText } from '../../../../shared/notation.ts';
 import type { RatingChange } from '../../../../shared/protocol.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { SideDot } from '../ui/controls.tsx';
-import { peso, signed } from '../../lib/format.ts';
+import { MathText } from '../ui/MathText.tsx';
+import { signed } from '../../lib/format.ts';
 import type { PlayerInfo } from './PlayerStrip.tsx';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   result: GameResult;
+  grade: Grade;
+  /** Each side's sheet before the remaining chips were added. */
+  columns: Record<Side, Columns>;
   captures: Record<Side, number>;
   players: Record<Side, PlayerInfo | null>;
   mySide: Side | null;
   ratingChange?: RatingChange | null;
   children?: ReactNode;
 }
+
+const COLUMN_NAME: Partial<Record<Column, string>> = { g: 'Mass', C: 'Temperature', gC: 'Mass × temperature' };
 
 /** "Ana resigned", "Ben ran out of move time", or the generic reason. */
 export function resultReason(result: GameResult, players: Record<Side, PlayerInfo | null>): string {
@@ -33,7 +39,7 @@ export function resultTitle(result: GameResult, players: Record<Side, PlayerInfo
   return `${players[result.winner]?.name ?? (result.winner === 'red' ? 'Red' : 'Blue')} wins`;
 }
 
-export function ResultDialog({ open, onClose, result, captures, players, mySide, ratingChange, children }: Props) {
+export function ResultDialog({ open, onClose, result, grade, columns, captures, players, mySide, ratingChange, children }: Props) {
   const sides: Side[] = mySide === 'blue' ? ['blue', 'red'] : ['red', 'blue'];
   const row = 'grid grid-cols-[minmax(72px,1fr)_minmax(0,124px)_minmax(0,124px)] items-baseline gap-3 py-2 border-b border-rule';
   return (
@@ -48,28 +54,44 @@ export function ResultDialog({ open, onClose, result, captures, players, mySide,
             </span>
           ))}
         </div>
-        <div className={row}>
-          <span className="text-muted">Captures</span>
-          {sides.map((s) => (
-            <span key={s} className="num text-right">
-              {peso(captures[s])}
-            </span>
-          ))}
-        </div>
-        <div className={row}>
-          <span className="text-muted">Chips left</span>
-          {sides.map((s) => (
-            <span key={s} className="num text-right">
-              {peso(result.tally[s].total)}
-              <span className="block text-meta text-faint">{result.tally[s].items.length} chips</span>
-            </span>
-          ))}
-        </div>
+        {grade === 10 ? (
+          // Grade 10's final multiplies its columns, so captures and chips left do not add up to it.
+          GRADES[10].columns.map((column) => (
+            <div key={column} className={row}>
+              <span className="text-muted">{COLUMN_NAME[column]}</span>
+              {sides.map((s) => (
+                <span key={s} className="num text-right">
+                  {quantity(column, (columns[s][column] ?? 0) + (result.tally[s].columns[column] ?? 0))}
+                </span>
+              ))}
+            </div>
+          ))
+        ) : (
+          <>
+            <div className={row}>
+              <span className="text-muted">Captures</span>
+              {sides.map((s) => (
+                <span key={s} className="num text-right">
+                  <MathText>{scoreText(captures[s], grade)}</MathText>
+                </span>
+              ))}
+            </div>
+            <div className={row}>
+              <span className="text-muted">Chips left</span>
+              {sides.map((s) => (
+                <span key={s} className="num text-right">
+                  <MathText>{scoreText(result.tally[s].total, grade)}</MathText>
+                  <span className="block text-meta text-faint">{result.tally[s].items.length} chips</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
         <div className={`${row} font-semibold`}>
           <span>Final</span>
           {sides.map((s) => (
             <span key={s} className={`num text-right text-card ${result.winner === s ? 'text-accent' : ''}`}>
-              {peso(result.final[s])}
+              <MathText>{finalText(result.final[s], grade)}</MathText>
             </span>
           ))}
         </div>

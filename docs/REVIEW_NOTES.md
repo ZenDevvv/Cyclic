@@ -134,6 +134,10 @@ Each item says what was decided, why, and where to change it. **Open questions**
 - **One rating across all grades,** so a player's rating is not split while the player base is small. To separate
   them: add a rating per grade, and pair on it in `server/matchmaking.ts`.
 
+- **Profile no longer shows best and average final score.** Lower wins now, and a player's games can be in different
+  units, so neither figure meant anything. To bring them back: compare within one grade in `pages/Profile.tsx`.
+- **The title screen stays Grade 7.** Its demo, copy and "Play from here" are all Electro.
+
 ## Open questions for you
 
 1. **Negative scores:** keep "below zero scores nothing", or score negatives like integer Damath?
