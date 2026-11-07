@@ -126,6 +126,8 @@ Each item says what was decided, why, and where to change it. **Open questions**
   `DEFAULT_ROOM_SETTINGS`, and in `client/src/store/prefs.ts` for offline games.
 - **The bot lost its dama bonus.** Damas now count against a side through the tally, and the medium and hard levels
   each won 40 of 40 games against random play. The easy level won 24 of 40.
+- **The bot compares score gaps by order of magnitude,** because they run from ₱1 to 10²⁴ across the grades. The
+  order of positions does not change, and a won game always outranks a lead. Results are in `GRADES_PLAN.md`.
 
 ## Open questions for you
 

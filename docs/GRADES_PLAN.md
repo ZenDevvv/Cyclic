@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 to 3 built on 2026-11-07; Phases 4–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 to 4 built on 2026-11-07; Phases 5–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -133,14 +133,28 @@ Measured over 1,000 random games per grade, with each side winning about half:
 | 9 | 21% | 415°F |
 | 10 | 31% | 2,069 calories |
 
-Grade 8's finals run as high as 10²⁴, so one large product can decide a game. Check that when it is first played.
+Grade 8's finals run as high as 10²⁴, so one large product can decide a game. Phase 4 measured this; check how it
+feels when it is first played.
 
-### Phase 4: teach the bot every grade (small to medium)
+### Phase 4: teach the bot every grade (small to medium) — built
 
 - `evaluate` is tuned to pesos, and its fixed `+6` dama bonus means nothing next to Grade 8's 10¹² range. Compare
   projected finals on a log scale and scale the bonuses to match.
 - Grade 10's final score multiplies columns, so `evaluate` must use the grade's final-score rule, not a sum.
 - Test: the medium bot beats a random player in most of 20 games in each grade, and always returns a legal turn.
+
+The log scale also fixed a real bug: a won game was worth 100,000, while a Grade 8 lead was worth over 10¹², so
+the bot preferred a bigger lead to winning. Results over 24 games per pairing:
+
+| Grade | Medium v random | Hard v easy | New v old bot, medium (30 games) | Biggest term in the loser's score |
+| --- | --- | --- | --- | --- |
+| 7 | 24–0 | 24–0 | 13–15, 2 draws | 25% |
+| 8 | 23–1 | 24–0 | 17–13 | 98% |
+| 9 | 24–0 | 24–0 | 14–15, 1 draw | 15% |
+| 10 | 24–0 | 24–0 | 16–14 | Not comparable: its final multiplies columns |
+
+Skill decides Grade 8, but one term is nearly the whole losing score. Easy plays about even with a random player
+in every grade, which suits a beginner but may be weaker than the name suggests.
 
 ### Phase 5: server and protocol (medium)
 
@@ -208,6 +222,7 @@ These colours are starting points, to be checked on real screens.
 | Risk | Plan |
 | --- | --- |
 | Our Grade 8 rules are invented | Keep them in one table entry, and label them in Learn |
+| One term dominates Grade 8 | Measured in Phase 4: 98% of the loser's score, though skill still decides. Play it first |
 | Grade 9 half-scores on the shared board | Measured in Phase 3: 21% of captures score, the same as Grade 7, so it stays |
 | A proper manual contradicts section 2 | Rule calls are data in `GRADES`, so most fixes are one-line |
 | Grade 8 numbers break layouts | Test the longest values at 390 px in Phase 6 |

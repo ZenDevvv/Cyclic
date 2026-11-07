@@ -22,8 +22,10 @@ import {
   type Op,
   type Piece,
   type Side,
+  type Step,
   type Unit,
 } from './engine.ts';
+import { chooseTurn, evaluate, type BotLevel } from './bot.ts';
 import { encodeBoard, decodeBoard } from './codec.ts';
 import { equationParts, equationText, finalText, scoreText, stepText } from './notation.ts';
 
@@ -328,4 +330,127 @@ test('Grade 10: dama factors apply in every column, and on chips left on the boa
   assert.equal(scoreCapture(chip('C', 11, true), chip('g', 3, true), 'mul', 10).amount, 132);
   const { red } = remainingTally(position(10, [[0, 1, chip('g', 7, true)], [2, 1, chip('C', 11, true)]]).board, 10);
   assert.deepEqual(red.columns, { g: 14, C: 22 });
+});
+
+// ------------------------------------------------------------------ the bot
+
+function lcg(seed: number) {
+  return () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+}
+
+/** One whole turn for the side to move, played by `pick`. */
+function playTurn(s: GameState, pick: (s: GameState) => Step[]): GameState {
+  let next = s;
+  for (const step of pick(s)) next = applyStep(next, step).state;
+  return next;
+}
+
+const randomTurn = (rng: () => number) => (s: GameState): Step[] => {
+  const steps: Step[] = [];
+  let cur = s;
+  while (!cur.result && cur.turn === s.turn) {
+    const legal = legalSteps(cur);
+    const step = legal[Math.floor(rng() * legal.length)];
+    steps.push({ from: step.from, to: step.to });
+    cur = applyStep(cur, step).state;
+  }
+  return steps;
+};
+
+function playOut(grade: Grade, red: (s: GameState) => Step[], blue: (s: GameState) => Step[]): Side | null {
+  let s = initialState({ grade });
+  for (let turn = 0; turn < 200 && !s.result; turn++) s = playTurn(s, s.turn === 'red' ? red : blue);
+  return endGame(s, 'time').result!.winner;
+}
+
+test('bot: a won game outranks any lead, even in Grade 8', () => {
+  const live = position(8, [[1, 0, chip('sci', 2.2e2)], [6, 7, chip('sci', 1.212e12, false, 'blue')]]);
+  assert.ok(evaluate(live, 'red') > 0, 'red is far ahead');
+  const won = endGame({ ...live, columns: { red: {}, blue: { sci: 1 } } }, 'resign', 'red');
+  assert.ok(evaluate(won, 'red') > evaluate(live, 'red'));
+  const lost = endGame(live, 'resign', 'blue');
+  assert.ok(evaluate(lost, 'red') < -evaluate(live, 'red'), 'a loss is worse than any deficit');
+});
+
+test('bot: a bigger gap is always better, in every grade', () => {
+  const units: Record<Grade, { unit: Unit; column: keyof Columns; big: number; small: number }> = {
+    7: { unit: 'P', column: 'P', big: 400, small: 40 },
+    8: { unit: 'sci', column: 'sci', big: 1e20, small: 1e18 },
+    9: { unit: 'F', column: 'F', big: 900, small: 90 },
+    10: { unit: 'g', column: 'gC', big: 9000, small: 900 },
+  };
+  for (const grade of ALL) {
+    const { column, big, small } = units[grade];
+    const empty = position(grade, []);
+    const lead = (points: number) => ({ ...empty, columns: { red: {}, blue: { [column]: points } } });
+    assert.ok(evaluate(lead(big), 'red') > evaluate(lead(small), 'red'), `grade ${grade}`);
+    assert.ok(evaluate(lead(small), 'red') > 0, `grade ${grade}`);
+  }
+});
+
+test('bot: a position is worth exactly the opposite to the other side, as the search needs', () => {
+  const rng = lcg(3);
+  for (const grade of ALL) {
+    for (let g = 0; g < 10; g++) {
+      let s = initialState({ grade });
+      for (let n = 0; n < 40 && !s.result; n++) {
+        s = playTurn(s, randomTurn(rng));
+        assert.equal(evaluate(s, 'red') + evaluate(s, 'blue'), 0);
+        assert.ok(Number.isFinite(evaluate(s, 'red')));
+      }
+    }
+  }
+});
+
+test('bot: Grade 10 is judged by its real final score, which multiplies columns', () => {
+  // Adding columns would put red ahead on 20 to 51; the real finals are 100 calories to 50.
+  const s = position(10, [], { red: { g: 10, C: 10 }, blue: { g: 1, C: 50 } });
+  assert.deepEqual(projectedFinals(s), { red: 100, blue: 50 });
+  assert.ok(evaluate(s, 'red') < 0);
+});
+
+test('bot: every level plays a legal, complete turn in every grade', () => {
+  const rng = lcg(7);
+  const levels: BotLevel[] = ['easy', 'medium', 'hard'];
+  for (const grade of ALL) {
+    for (let n = 0; n < 12; n++) {
+      let s = initialState({ grade });
+      for (let i = Math.floor(rng() * 30); i > 0 && !s.result; i--) s = playTurn(s, randomTurn(rng));
+      if (s.result) continue;
+      for (const level of levels) {
+        const turn = chooseTurn(s, level, { rng, budgetMs: 10 });
+        assert.ok(turn.length > 0, `grade ${grade}, ${level}`);
+        const after = turn.reduce((cur, step) => applyStep(cur, step).state, s); // throws if illegal
+        assert.ok(after.result || after.turn !== s.turn, 'a bot turn always completes');
+      }
+    }
+  }
+});
+
+test('bot: medium beats random play in most of 20 games, in every grade', () => {
+  for (const grade of ALL) {
+    const rng = lcg(grade);
+    const bot = (s: GameState) => chooseTurn(s, 'medium', { rng, budgetMs: 8 });
+    let wins = 0;
+    for (let g = 0; g < 20; g++) {
+      const side: Side = g % 2 ? 'blue' : 'red';
+      const random = randomTurn(rng);
+      if (playOut(grade, side === 'red' ? bot : random, side === 'blue' ? bot : random) === side) wins++;
+    }
+    assert.ok(wins >= 16, `grade ${grade}: medium won ${wins} of 20`);
+  }
+});
+
+test('bot: skill decides every grade, so medium beats easy', () => {
+  for (const grade of ALL) {
+    const rng = lcg(grade + 40);
+    const medium = (s: GameState) => chooseTurn(s, 'medium', { rng, budgetMs: 8 });
+    const easy = (s: GameState) => chooseTurn(s, 'easy', { rng, budgetMs: 4 });
+    let wins = 0;
+    for (let g = 0; g < 8; g++) {
+      const side: Side = g % 2 ? 'blue' : 'red';
+      if (playOut(grade, side === 'red' ? medium : easy, side === 'blue' ? medium : easy) === side) wins++;
+    }
+    assert.ok(wins >= 6, `grade ${grade}: medium won ${wins} of 8`);
+  }
 });
