@@ -4,7 +4,10 @@ import { persist } from 'zustand/middleware';
 import type { BotLevel } from '../../../shared/bot.ts';
 import type { Grade, Side } from '../../../shared/engine.ts';
 
-export type BoardTheme = 'felt' | 'slate' | 'paper';
+/** The colours a board can be drawn in. */
+export type BoardColours = 'felt' | 'slate' | 'paper' | 'chalk' | 'sky' | 'clay';
+/** The player's choice: follow the game's grade, or one look for everything. */
+export type BoardTheme = 'grade' | 'felt' | 'slate' | 'paper';
 export type PieceSet = 'flat' | 'classic';
 
 export interface Prefs {
@@ -29,7 +32,7 @@ export interface Prefs {
 export const usePrefs = create<Prefs>()(
   persist(
     (set) => ({
-      boardTheme: 'felt',
+      boardTheme: 'grade',
       pieceSet: 'flat',
       sound: true,
       volume: 0.6,
@@ -44,6 +47,14 @@ export const usePrefs = create<Prefs>()(
       grade: 7,
       set: (patch) => set(patch),
     }),
-    { name: 'scidama.prefs', version: 1 },
+    {
+      name: 'scidama.prefs',
+      version: 2,
+      // Felt was the old default, not a choice, so those players get the new default. It looks the same in Grade 7.
+      migrate: (saved, version) => {
+        const prefs = saved as Prefs;
+        return version < 2 && prefs.boardTheme === 'felt' ? { ...prefs, boardTheme: 'grade' } : prefs;
+      },
+    },
   ),
 );

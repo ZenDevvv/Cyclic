@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phases 1 to 6 built on 2026-11-07; Phases 7–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 to 7 built on 2026-11-07; Phase 8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -192,7 +192,7 @@ in every grade, which suits a beginner but may be weaker than the name suggests.
 - **Results:** Grade 10's dialog lists its columns, because captures and chips left do not add up to its final.
 - **Profile:** the best and average score figures are gone: best meant highest, and each grade has its own unit.
 
-### Phase 7: grade themes (small to medium)
+### Phase 7: grade themes (small to medium) — built
 
 See section 5. Add the tokens, update `DESIGN.md` §2 and §7 in the same change, and run the taste-skill linter.
 
@@ -210,11 +210,12 @@ the player's Settings choice. Grade themes reuse that mechanism.
 | Grade | Theme | Idea | Light square | Dark square |
 | --- | --- | --- | --- | --- |
 | 7 | Felt (exists) | The original table | `#e8e1cf` | `#1f4d36` |
-| 8 | Chalk | A classroom chalkboard | `#e4e6e1` | `#2f3a35` |
+| 8 | Chalk | A classroom chalkboard | `#e4e6e1` | `#23282b` |
 | 9 | Sky | Weather and humidity | `#e1e8e6` | `#2c5560` |
 | 10 | Clay | Heat and fire | `#ecdfd0` | `#6b3a2a` |
 
-These colours are starting points, to be checked on real screens.
+`shared/themes.test.ts` measures these from `tokens.css`. Chalk's first shade was too close to Felt, and Sky's signs
+were too faint, so both changed.
 
 - **Settings:** add **Match the grade** as the new default. Felt, Slate and Paper stay as overrides, so a player
   can still choose one look for everything.

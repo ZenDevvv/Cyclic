@@ -80,9 +80,12 @@ only — never raw hex values.
 }
 ```
 
-Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dadc` / `#3a3d42`), **Paper**
-(the original: `#f5f5f5` / `#035a03`). Piece sets: **Flat** (default, SVG drawn in code) and **Classic**
-(the original Cyclic chip art, downscaled to 160 px WebP).
+Board themes (Settings → Board): **Match the grade** (default) gives each grade its own board: Grade 7 **Felt**
+(above), Grade 8 **Chalk** (`#e4e6e1` / `#23282b`), Grade 9 **Sky** (`#e1e8e6` / `#2c5560`), Grade 10 **Clay**
+(`#ecdfd0` / `#6b3a2a`). Players can instead pick one look for everything: **Felt**, **Slate** (`#d9dadc` /
+`#3a3d42`) or **Paper** (the original: `#f5f5f5` / `#035a03`). Themes change the board only, never the app shell, and
+`shared/themes.test.ts` measures their contrast. Piece sets: **Flat** (default, SVG drawn in code) and **Classic**
+(the original Cyclic chip art, downscaled to 160 px WebP; Grade 7 only, other grades fall back to Flat).
 
 ## 3. Type
 

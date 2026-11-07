@@ -19,6 +19,7 @@ import {
   type Step,
 } from '../../../../shared/engine.ts';
 import { chipLabel, OP_NAME, previewText, SIDE_NAME } from '../../../../shared/notation.ts';
+import { boardColours } from '../../lib/grades.ts';
 import { usePrefs, type BoardTheme, type PieceSet } from '../../store/prefs.ts';
 import { MathText } from '../ui/MathText.tsx';
 import { Chip } from './Chip.tsx';
@@ -258,7 +259,7 @@ export const Board = memo(function Board(props: BoardProps) {
     <div
       ref={boardRef}
       data-ui
-      data-board={theme}
+      data-board={boardColours(theme, grade)}
       role="group"
       aria-label={label}
       onKeyDown={onKeyDown}

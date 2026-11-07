@@ -60,3 +60,28 @@
   --sq-coord-light: #035a03;
   --sq-coord-dark: #f5f5f5;
 }
+
+/* Grade themes. Grade 7 is felt; shared/themes.test.ts measures all of these. */
+[data-board='chalk'] {
+  --sq-light: #e4e6e1;
+  --sq-dark: #23282b;
+  --sq-glyph: rgba(35, 40, 43, 0.5);
+  --sq-coord-light: #23282b;
+  --sq-coord-dark: #e4e6e1;
+}
+
+[data-board='sky'] {
+  --sq-light: #e1e8e6;
+  --sq-dark: #2c5560;
+  --sq-glyph: rgba(44, 85, 96, 0.56);
+  --sq-coord-light: #2c5560;
+  --sq-coord-dark: #e1e8e6;
+}
+
+[data-board='clay'] {
+  --sq-light: #ecdfd0;
+  --sq-dark: #6b3a2a;
+  --sq-glyph: rgba(107, 58, 42, 0.5);
+  --sq-coord-light: #6b3a2a;
+  --sq-coord-dark: #ecdfd0;
+}
