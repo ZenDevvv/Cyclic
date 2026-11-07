@@ -1,6 +1,6 @@
 # All-grades implementation plan
 
-**Status:** Phase 1 built on 2026-11-07; Phases 2–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
+**Status:** Phases 1 and 2 built on 2026-11-07; Phases 3–8 not started. **Goal:** play Scidama as Grade 7, 8, 9 or 10, each with its own
 chips, scoring and board theme, in rooms, quick match, bot games, local games and replays.
 
 The research behind this plan is in [`SCIDAMA_VERSIONS.md`](SCIDAMA_VERSIONS.md). The sources leave gaps, so
@@ -89,7 +89,7 @@ Fix what the sources say is wrong while only one grade exists, so later phases s
 **Done when** a Grade 7 game ending 10–20 is won by the side on 10 in every mode, and a forced capture plays
 itself with its message showing.
 
-### Phase 2: make the engine grade-aware (medium, no behaviour change)
+### Phase 2: make the engine grade-aware (medium, no behaviour change) — built
 
 All of this stays in `shared/engine.ts`, as hard rule 2 requires.
 
@@ -97,13 +97,18 @@ All of this stays in `shared/engine.ts`, as hard rule 2 requires.
   `state.rules` already travels with the state, so this is the one seam for everything.
 - A `GRADES` table holds each grade's chips, score columns, capture rule and final-score rule.
 - `Unit` widens to `P`, `kWh`, `sci`, `pct`, `F`, `g`, `C`.
-- `Piece` gains `slot` (0–11). `pieceId` and `shared/codec.ts` use the slot, because Grade 8 values are not
-  friendly IDs and `codec.ts` hard-codes Grade 7 values. `decodeBoard` takes the grade.
+- `shared/codec.ts` looks chips up by chip number in the grade's table, and `decodeBoard` takes the grade. A chip's
+  number comes from its unit and value, so `Piece` needed no new field. `pieceId` is unchanged.
+- `START_SQUARES` holds the squares for chips 1 to 12, shared by every grade.
 - Score columns replace the single number: `columns: Record<Side, Record<Column, number>>`. Grade 7 has kWh and
   ₱, Grades 8 and 9 have one column, Grade 10 has g, °C and g·°C. `scores` stays as the derived total, so most
-  of the client keeps working. `Equation.unitFactor` goes away; the rate applies only at the end.
+  of the client keeps working. `projectedFinals` gives the bot and `endGame` the same answer.
+- `Equation.unitFactor` stays, so the ledger can keep teaching `×5 ₱/kWh`. Totals come from the columns, so the
+  rate reaches the final score once, as on the sheet, and a linear grade comes to the same number either way.
 - `scoreCapture` and `piecePoints` take the grade. `base === null` stays the meaning of NS.
-- `shared/notation.ts` gets one formatter for chips, equations and totals, used by every screen.
+- `shared/notation.ts` gets one formatter for chips, equations and totals. `peso` already calls it; Phase 6 passes
+  the grade to every screen.
+- `GRADES` holds only Grade 7 until Phase 3, so `Grade` is `7` for now and widens by itself as entries are added.
 
 **Done when** the Grade 7 tests pass unchanged apart from the rate, and a sample-sheet test reproduces ₱126.
 

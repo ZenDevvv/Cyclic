@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyStep, endGame, initialState, legalSteps, replay, sq, type Cell, type GameState, type Side } from './engine.ts';
+import { applyStep, endGame, GRADES, initialBoard, initialState, legalSteps, PLAYABLE, replay, scoreCapture, sq, type Cell, type GameState, type Side } from './engine.ts';
 import { chooseTurn, evaluate, turnsFrom, type BotLevel } from './bot.ts';
 import { rate, expectedScore } from './rating.ts';
 import { decodeBoard, encodeBoard } from './codec.ts';
-import { captureNotice } from './notation.ts';
+import { captureNotice, equationParts, quantity, scientific, scoreText } from './notation.ts';
 import { DEFAULT_ROOM_SETTINGS } from './presets.ts';
 
 function lcg(seed: number) {
@@ -64,12 +64,21 @@ test('bot values a capture that scores nothing above one that scores, because po
 });
 
 test('bot treats the lower final score as the win', () => {
-  const s = { ...initialState(), scores: { red: 0, blue: 50 } };
+  const s = { ...initialState(), scores: { red: 0, blue: 50 }, columns: { red: {}, blue: { P: 50 } } };
   const over = endGame(s, 'time');
   assert.equal(over.result?.winner, 'red');
   assert.ok(evaluate(over, 'red') > 0);
   assert.ok(evaluate(over, 'blue') < 0);
   assert.ok(evaluate(s, 'red') > evaluate(s, 'blue'), 'points already scored are a liability mid-game too');
+});
+
+test('bot counts chips still on the board against their owner', () => {
+  const board: Cell[] = new Array(64).fill(null);
+  board[sq(1, 0)] = { id: 'r1', side: 'red', unit: 'P', value: 12, king: false };
+  board[sq(6, 7)] = { id: 'b1', side: 'blue', unit: 'P', value: 2, king: false };
+  const s: GameState = { ...initialState(), board };
+  assert.ok(evaluate(s, 'red') < -5, 'neither side has scored, but red is ₱10 worse off');
+  assert.ok(evaluate(s, 'blue') > 5);
 });
 
 test('with the lower score winning, a stronger bot still beats random play', () => {
@@ -193,4 +202,61 @@ test('capture notice: stays up after an auto-capture, only when one was played',
 test('capture notice: nothing to say on a quiet board or a finished game', () => {
   assert.equal(captureNotice(initialState(), null, { autoCapture: true, viewer: 'red' }), null);
   assert.equal(captureNotice(endGame(forcedPosition(), 'resign', 'blue'), null, { autoCapture: true, viewer: 'red' }), null);
+});
+
+test('quantity writes every unit the way the score sheets do', () => {
+  assert.equal(quantity('P', 8), '₱8');
+  assert.equal(quantity('P', 1240), '₱1,240');
+  assert.equal(quantity('kWh', 11), '11 kWh');
+  assert.equal(quantity('pct', 25), '25%');
+  assert.equal(quantity('F', 91), '91°F');
+  assert.equal(quantity('g', 37), '37 g');
+  assert.equal(quantity('C', 37), '37°C');
+  assert.equal(quantity('gC', 370), '370 g·°C');
+  assert.equal(quantity('sci', 0.11), '1.1 × 10⁻¹');
+});
+
+test('scientific notation: exponents, trimmed zeros and five figures at most', () => {
+  assert.equal(scientific(220), '2.2 × 10²');
+  assert.equal(scientific(220.11), '2.2011 × 10²');
+  assert.equal(scientific(1.212e12), '1.212 × 10¹²');
+  assert.equal(scientific(1.111e-11), '1.111 × 10⁻¹¹');
+  assert.equal(scientific(1.01e10), '1.01 × 10¹⁰');
+  assert.equal(scientific(3), '3 × 10⁰');
+  assert.equal(scientific(1000), '1 × 10³');
+  assert.equal(scientific(0.1 + 0.2), '3 × 10⁻¹', 'floating-point noise never shows');
+  assert.equal(scientific(1234567), '1.2346 × 10⁶');
+  assert.equal(scientific(0), '0');
+});
+
+test('scores are written in the grade\'s unit', () => {
+  assert.equal(scoreText(1240), '₱1,240');
+  assert.equal(scoreText(0, 7), '₱0');
+  assert.equal(GRADES[7].scoreUnit, 'P');
+});
+
+test('equation parts name the column the result went in', () => {
+  const p = (unit: 'P' | 'kWh', value: number) => ({ id: 'x', side: 'red' as const, unit, value, king: false });
+  const kwh = equationParts(scoreCapture(p('kWh', 5), p('kWh', 3), 'add'));
+  assert.equal(kwh.result, '8 kWh');
+  assert.deepEqual(kwh.factors, ['×5 ₱/kWh']);
+  assert.equal(kwh.points, '₱40');
+  assert.deepEqual(equationParts(scoreCapture(p('P', 8), p('P', 4), 'add')).factors, []);
+});
+
+test('codec: every chip of a grade survives the trip, on either side, crowned or not', () => {
+  for (const grade of Object.keys(GRADES).map(Number) as (keyof typeof GRADES)[]) {
+    const start = initialBoard(grade);
+    assert.deepEqual(decodeBoard(encodeBoard(start, grade), grade), start);
+    const crowned = start.map((p) => (p ? { ...p, king: true } : null));
+    assert.deepEqual(decodeBoard(encodeBoard(crowned, grade), grade), crowned);
+  }
+});
+
+test('codec: one character per playable square, and an unknown chip is left out', () => {
+  const start = initialBoard();
+  assert.equal(encodeBoard(start).length, PLAYABLE.length);
+  const stranger: Cell[] = new Array(64).fill(null);
+  stranger[sq(1, 0)] = { id: 'x', side: 'red', unit: 'g', value: 37, king: false };
+  assert.equal(encodeBoard(stranger), '.'.repeat(32));
 });

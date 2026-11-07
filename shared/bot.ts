@@ -3,7 +3,7 @@ import {
   applyLegalStep,
   legalSteps,
   other,
-  remainingTally,
+  projectedFinals,
   yOf,
   type GameState,
   type Side,
@@ -51,11 +51,10 @@ export function evaluate(state: GameState, side: Side): number {
     if (winner === null) return 0;
     return winner === side ? WIN : -WIN;
   }
-  const tally = remainingTally(state.board);
-  const opp = other(side);
   // Projected final score difference: captured points plus chips still standing count against a side.
   // The tally already doubles a dama, so a crown needs no bonus of its own.
-  let score = state.scores[opp] + tally[opp].total - (state.scores[side] + tally[side].total);
+  const final = projectedFinals(state);
+  let score = final[other(side)] - final[side];
   // A small nudge forward keeps games moving when the scores are level.
   for (let i = 0; i < 64; i++) {
     const p = state.board[i];

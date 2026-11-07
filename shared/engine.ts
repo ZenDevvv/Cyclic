@@ -2,8 +2,11 @@
 // Pure functions over plain data so the server, the client and the bot share one implementation.
 
 export type Side = 'red' | 'blue';
-export type Unit = 'P' | 'kWh';
+export type Unit = 'P' | 'kWh' | 'sci' | 'pct' | 'F' | 'g' | 'C';
 export type Op = 'add' | 'sub' | 'mul' | 'div';
+/** A column on the score sheet. Humidity is scored in °F, so it has none; g·°C has no chip of its own. */
+export type Column = Exclude<Unit, 'pct'> | 'gC';
+export type Columns = Partial<Record<Column, number>>;
 
 export interface Piece {
   id: string; // stable for the whole game, e.g. "r-P12", "b-kWh3"
@@ -16,11 +19,12 @@ export interface Piece {
 export type Cell = Piece | null;
 
 export interface Rules {
+  grade: Grade;
   /** The "mayor" rules: a side must take the sequence with the most chips; on equal counts a dama goes first. */
   maxCapture: boolean;
 }
 
-export const DEFAULT_RULES: Rules = { maxCapture: true };
+export const DEFAULT_RULES: Rules = { grade: 7, maxCapture: true };
 
 /** Pesos per kWh. It depends on the game maker; one value so a room setting can replace it later. */
 export const KWH_RATE = 5;
@@ -41,13 +45,17 @@ export interface Equation {
   a: { unit: Unit; value: number; king: boolean };
   b: { unit: Unit; value: number; king: boolean };
   sameUnit: boolean;
-  /** Result of the arithmetic in the attacker's unit; null means no score (NS). */
+  /** Score-sheet column the result goes in. */
+  column: Column;
+  /** Result of the arithmetic; null means no score (NS). */
   base: number | null;
   /** ×2 for an attacking dama, ×2 for a captured dama. */
   kingFactor: number;
-  /** KWH_RATE when the result is in kWh, otherwise 1. */
+  /** What goes in the column: the base with the dama factors applied. */
+  amount: number;
+  /** Converts the column to the score, such as KWH_RATE for kWh; otherwise 1. */
   unitFactor: number;
-  /** Pesos added to the attacker's score. */
+  /** What this capture is worth in the score: the amount with the unit factor applied. */
   points: number;
 }
 
@@ -87,6 +95,8 @@ export interface TallyItem {
 
 export interface Tally {
   items: TallyItem[];
+  /** What the chips add to each column of the score sheet. */
+  columns: Columns;
   total: number;
 }
 
@@ -95,13 +105,16 @@ export interface GameResult {
   reason: EndReason;
   /** Points for chips still on the board. */
   tally: Record<Side, Tally>;
-  /** Capture points + remaining-chip tally. */
+  /** The grade's total of each side's columns, with the remaining chips added. */
   final: Record<Side, number>;
 }
 
 export interface GameState {
   board: Cell[]; // 64 squares, index = y * 8 + x
   turn: Side;
+  /** Each side's score sheet. */
+  columns: Record<Side, Columns>;
+  /** Each side's score so far: always the grade's total of its columns. */
   scores: Record<Side, number>;
   /** Square of the chip that must keep capturing, or null at the start of a turn. */
   jumper: number | null;
@@ -155,35 +168,92 @@ const DIRS: readonly [number, number][] = [
 const forward = (side: Side): number => (side === 'red' ? 1 : -1);
 const farRow = (side: Side): number => (side === 'red' ? SIZE - 1 : 0);
 
+// ---------------------------------------------------------------- grades
+
+export interface Chip {
+  unit: Unit;
+  value: number;
+}
+
+/** Everything that differs from one grade to the next. The board and the moves are shared. */
+export interface GradeRules {
+  name: string;
+  /** Chips 1 to 12, as the published boards number them. Index 0 is chip 1. */
+  chips: readonly Chip[];
+  /** The score sheet's columns, in print order. */
+  columns: readonly Column[];
+  /** The unit a final score is written in. */
+  scoreUnit: Column;
+  /** The arithmetic of a capture, before any dama factor. A null base is no score (NS). */
+  capture(attacker: Piece, captured: Piece, op: Op): { column: Column; base: number | null };
+  /** Where a chip left on the board goes on the sheet, before any dama factor. */
+  remaining(piece: Piece): { column: Column; amount: number };
+  /** Converts a column to the score, for grades that add their columns up. */
+  unitFactor(column: Column): number;
+  /** The score a sheet comes to. The lower score wins in every grade. */
+  total(columns: Columns): number;
+}
+
+const electroColumn = (unit: Unit): Column => (unit === 'kWh' ? 'kWh' : 'P');
+
+const ELECTRO: GradeRules = {
+  name: 'Electro',
+  chips: [
+    { unit: 'kWh', value: 1 }, { unit: 'P', value: 2 }, { unit: 'kWh', value: 3 }, { unit: 'P', value: 4 },
+    { unit: 'kWh', value: 5 }, { unit: 'P', value: 6 }, { unit: 'kWh', value: 7 }, { unit: 'P', value: 8 },
+    { unit: 'kWh', value: 9 }, { unit: 'P', value: 10 }, { unit: 'kWh', value: 11 }, { unit: 'P', value: 12 },
+  ],
+  columns: ['kWh', 'P'],
+  scoreUnit: 'P',
+  capture(attacker, captured, op) {
+    const column = electroColumn(attacker.unit);
+    if (attacker.unit !== captured.unit) return { column, base: null };
+    if (op === 'add') return { column, base: attacker.value + captured.value };
+    if (op !== 'sub') return { column, base: null };
+    const diff = attacker.value - captured.value;
+    return { column, base: diff >= 0 ? diff : null };
+  },
+  remaining: (piece) => ({ column: electroColumn(piece.unit), amount: piece.value }),
+  unitFactor: (column) => (column === 'kWh' ? KWH_RATE : 1),
+  total: (columns) => (columns.kWh ?? 0) * KWH_RATE + (columns.P ?? 0),
+};
+
+export const GRADES = { 7: ELECTRO } as const satisfies Record<number, GradeRules>;
+
+export type Grade = keyof typeof GRADES;
+
+function addToColumn(columns: Columns, column: Column, amount: number): Columns {
+  return { ...columns, [column]: (columns[column] ?? 0) + amount };
+}
+
 // ---------------------------------------------------------------- setup
 
-type Seed = [x: number, y: number, unit: Unit, value: number];
-
-const RED_START: Seed[] = [
-  [1, 0, 'P', 12], [3, 0, 'kWh', 9], [5, 0, 'P', 6], [7, 0, 'kWh', 3],
-  [0, 1, 'kWh', 1], [2, 1, 'P', 4], [4, 1, 'kWh', 11], [6, 1, 'P', 8],
-  [1, 2, 'P', 10], [3, 2, 'kWh', 7], [5, 2, 'P', 2], [7, 2, 'kWh', 5],
+/** Red's squares for chips 1 to 12, the same in every grade. Blue mirrors them under a 180° turn. */
+const START_SQUARES: readonly (readonly [x: number, y: number])[] = [
+  [0, 1], [5, 2], [7, 0], [2, 1], [7, 2], [5, 0], [3, 2], [6, 1], [3, 0], [1, 2], [4, 1], [1, 0],
 ];
 
 export const pieceId = (side: Side, unit: Unit, value: number): string => `${side[0]}-${unit}${value}`;
 
-export function initialBoard(): Cell[] {
+export function initialBoard(grade: Grade = DEFAULT_RULES.grade): Cell[] {
   const board: Cell[] = new Array(64).fill(null);
-  for (const [x, y, unit, value] of RED_START) {
+  GRADES[grade].chips.forEach(({ unit, value }, n) => {
+    const [x, y] = START_SQUARES[n];
     board[sq(x, y)] = { id: pieceId('red', unit, value), side: 'red', unit, value, king: false };
-    // Blue mirrors red under a 180° turn.
     board[sq(7 - x, 7 - y)] = { id: pieceId('blue', unit, value), side: 'blue', unit, value, king: false };
-  }
+  });
   return board;
 }
 
 export function initialState(rules: Partial<Rules> = {}): GameState {
+  const merged = { ...DEFAULT_RULES, ...rules };
   return {
-    board: initialBoard(),
+    board: initialBoard(merged.grade),
     turn: 'red',
+    columns: { red: {}, blue: {} },
     scores: { red: 0, blue: 0 },
     jumper: null,
-    rules: { ...DEFAULT_RULES, ...rules },
+    rules: merged,
     stepCount: 0,
     turnNumber: 1,
     result: null,
@@ -314,40 +384,63 @@ export function forcedStep(state: GameState): LegalStep | null {
 
 // ---------------------------------------------------------------- scoring
 
-export function scoreCapture(attacker: Piece, captured: Piece, op: Op): Equation {
-  const sameUnit = attacker.unit === captured.unit;
-  let base: number | null = null;
-  if (sameUnit && op === 'add') base = attacker.value + captured.value;
-  if (sameUnit && op === 'sub') {
-    const diff = attacker.value - captured.value;
-    base = diff >= 0 ? diff : null;
-  }
+export function scoreCapture(attacker: Piece, captured: Piece, op: Op, grade: Grade = DEFAULT_RULES.grade): Equation {
+  const rules = GRADES[grade];
+  const { column, base } = rules.capture(attacker, captured, op);
   const kingFactor = (attacker.king ? 2 : 1) * (captured.king ? 2 : 1);
-  const unitFactor = attacker.unit === 'kWh' ? KWH_RATE : 1;
+  const unitFactor = rules.unitFactor(column);
+  const amount = base === null ? 0 : base * kingFactor;
   return {
     op,
     a: { unit: attacker.unit, value: attacker.value, king: attacker.king },
     b: { unit: captured.unit, value: captured.value, king: captured.king },
-    sameUnit,
+    sameUnit: attacker.unit === captured.unit,
+    column,
     base,
     kingFactor,
+    amount,
     unitFactor,
-    points: base === null ? 0 : base * kingFactor * unitFactor,
+    points: amount * unitFactor,
   };
 }
 
-/** Pesos a chip is worth when it is still on the board at the end. */
-export const piecePoints = (p: Piece): number => p.value * (p.king ? 2 : 1) * (p.unit === 'kWh' ? KWH_RATE : 1);
+/** What a chip adds to its column when it is still on the board at the end. */
+function pieceAmount(piece: Piece, grade: Grade): { column: Column; amount: number } {
+  const { column, amount } = GRADES[grade].remaining(piece);
+  return { column, amount: amount * (piece.king ? 2 : 1) };
+}
 
-export function remainingTally(board: readonly Cell[]): Record<Side, Tally> {
-  const tally: Record<Side, Tally> = { red: { items: [], total: 0 }, blue: { items: [], total: 0 } };
+/** What a chip is worth when it is still on the board at the end. */
+export function piecePoints(piece: Piece, grade: Grade = DEFAULT_RULES.grade): number {
+  const { column, amount } = pieceAmount(piece, grade);
+  return amount * GRADES[grade].unitFactor(column);
+}
+
+export function remainingTally(board: readonly Cell[], grade: Grade = DEFAULT_RULES.grade): Record<Side, Tally> {
+  const tally: Record<Side, Tally> = { red: { items: [], columns: {}, total: 0 }, blue: { items: [], columns: {}, total: 0 } };
   board.forEach((piece, square) => {
     if (!piece) return;
-    const points = piecePoints(piece);
-    tally[piece.side].items.push({ piece, square, points });
-    tally[piece.side].total += points;
+    const side = tally[piece.side];
+    const { column, amount } = pieceAmount(piece, grade);
+    side.items.push({ piece, square, points: piecePoints(piece, grade) });
+    side.columns = addToColumn(side.columns, column, amount);
   });
+  for (const side of [tally.red, tally.blue]) side.total = GRADES[grade].total(side.columns);
   return tally;
+}
+
+/** What each side would finish on if the game stopped here: its sheet with the remaining chips added. */
+export function projectedFinals(state: GameState, tally = remainingTally(state.board, state.rules.grade)): Record<Side, number> {
+  const rules = GRADES[state.rules.grade];
+  const final = (side: Side): number => {
+    let columns = state.columns[side];
+    for (const column of rules.columns) {
+      const amount = tally[side].columns[column];
+      if (amount) columns = addToColumn(columns, column, amount);
+    }
+    return rules.total(columns);
+  };
+  return { red: final('red'), blue: final('blue') };
 }
 
 // ---------------------------------------------------------------- applying steps
@@ -379,7 +472,8 @@ export function applyLegalStep(state: GameState, legal: LegalStep, forced = fals
   if (legal.capture !== null) board[legal.capture] = null;
 
   const op = OPERATORS[legal.to]!;
-  const equation = captured ? scoreCapture(piece, captured, op) : null;
+  const { grade } = state.rules;
+  const equation = captured ? scoreCapture(piece, captured, op, grade) : null;
   const points = equation?.points ?? 0;
 
   let moved: Piece = piece;
@@ -393,11 +487,12 @@ export function applyLegalStep(state: GameState, legal: LegalStep, forced = fals
     crowned = true;
   }
 
-  const scores = { ...state.scores, [side]: state.scores[side] + points };
+  const sheet = equation?.amount ? addToColumn(state.columns[side], equation.column, equation.amount) : state.columns[side];
   let next: GameState = {
     ...state,
     board,
-    scores,
+    columns: { ...state.columns, [side]: sheet },
+    scores: { ...state.scores, [side]: GRADES[grade].total(sheet) },
     jumper: continues ? legal.to : null,
     turn: continues ? side : other(side),
     stepCount: state.stepCount + 1,
@@ -434,11 +529,8 @@ export function applyLegalStep(state: GameState, legal: LegalStep, forced = fals
  */
 export function endGame(state: GameState, reason: EndReason, winner?: Side | null): GameState {
   if (state.result) return state;
-  const tally = remainingTally(state.board);
-  const final = {
-    red: state.scores.red + tally.red.total,
-    blue: state.scores.blue + tally.blue.total,
-  };
+  const tally = remainingTally(state.board, state.rules.grade);
+  const final = projectedFinals(state, tally);
   let w: Side | null;
   if (reason === 'agreement') w = null;
   else if (winner !== undefined) w = winner;

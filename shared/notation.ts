@@ -1,17 +1,49 @@
 // Human-readable labels for chips, squares, operators and capture equations.
-import type { EndReason, Equation, GameState, Op, Piece, Side, StepRecord, Unit } from './engine.ts';
-import { capturesFrom, forcedStep, legalSteps, mustCaptureSquares, PLAYABLE, xOf, yOf } from './engine.ts';
+import type { Column, EndReason, Equation, GameState, Grade, Op, Piece, Side, StepRecord, Unit } from './engine.ts';
+import { capturesFrom, DEFAULT_RULES, forcedStep, GRADES, legalSteps, mustCaptureSquares, PLAYABLE, xOf, yOf } from './engine.ts';
 
 export const OP_SYMBOL: Record<Op, string> = { add: '+', sub: '−', mul: '×', div: '÷' };
 export const OP_NAME: Record<Op, string> = { add: 'plus', sub: 'minus', mul: 'times', div: 'divided by' };
 export const SIDE_NAME: Record<Side, string> = { red: 'Red', blue: 'Blue' };
 
-/** "₱8" or "11 kWh". */
-export function quantity(unit: Unit, value: number): string {
-  return unit === 'P' ? `₱${value}` : `${value} kWh`;
+const SUPERSCRIPT: Record<string, string> = {
+  '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+};
+
+/** "2.2011 × 10²": at most five significant figures, however long the number behind it. */
+export function scientific(value: number): string {
+  if (value === 0) return '0';
+  const [mantissa, exponent] = value.toExponential(4).split('e');
+  const figures = mantissa.replace(/\.?0+$/, '');
+  return `${figures} × 10${[...String(Number(exponent))].map((c) => SUPERSCRIPT[c]).join('')}`;
+}
+
+/** Any amount in its unit, e.g. "₱8", "11 kWh", "1.1 × 10⁻¹", "25%", "91°F", "37 g", "37°C" or "370 g·°C". */
+export function quantity(unit: Unit | Column, value: number): string {
+  switch (unit) {
+    case 'P':
+      return `₱${value.toLocaleString('en-US')}`;
+    case 'kWh':
+      return `${value} kWh`;
+    case 'sci':
+      return scientific(value);
+    case 'pct':
+      return `${value}%`;
+    case 'F':
+      return `${value}°F`;
+    case 'g':
+      return `${value} g`;
+    case 'C':
+      return `${value}°C`;
+    case 'gC':
+      return `${value} g·°C`;
+  }
 }
 
 export const chipLabel = (p: Pick<Piece, 'unit' | 'value'>): string => quantity(p.unit, p.value);
+
+/** A score or total in the grade's own unit, e.g. "₱1,240". */
+export const scoreText = (value: number, grade: Grade = DEFAULT_RULES.grade): string => quantity(GRADES[grade].scoreUnit, value);
 
 /** "(x,y)" in red's frame, as printed on the board edges. */
 export const coord = (square: number): string => `(${xOf(square)},${yOf(square)})`;
@@ -37,7 +69,7 @@ export function equationParts(eq: Equation): EquationParts {
   if (scored) {
     if (eq.a.king) factors.push('×2 dama');
     if (eq.b.king) factors.push('×2 captured dama');
-    if (eq.unitFactor > 1) factors.push(`×${eq.unitFactor} ₱/kWh`);
+    if (eq.unitFactor !== 1) factors.push(`×${eq.unitFactor} ₱/kWh`);
   }
   let reason: string | null = null;
   if (!eq.sameUnit) reason = 'Units differ';
@@ -45,7 +77,7 @@ export function equationParts(eq: Equation): EquationParts {
   else if (eq.base === null) reason = 'Below zero';
   return {
     left,
-    result: scored ? quantity(eq.a.unit, eq.base!) : 'NS',
+    result: scored ? quantity(eq.column, eq.base!) : 'NS',
     factors,
     points: `₱${eq.points}`,
     scored,
