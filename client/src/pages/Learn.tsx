@@ -4,6 +4,7 @@ import {
   applyStep,
   initialBoard,
   initialState,
+  KWH_RATE,
   scoreCapture,
   sq,
   type Cell,
@@ -126,7 +127,7 @@ export default function Learn() {
           <p className="mt-3 text-card leading-[26px]">
             Scidama is checkers where every capture is a sum. Each chip is a quantity, in pesos or in kilowatt-hours. When you jump
             a chip, the sign on the square you land on combines the two quantities, and you score only when the result is still
-            money or energy. Highest total at the end wins.
+            money or energy. Everything you score counts against you: the lowest total at the end wins.
           </p>
           <nav aria-label="On this page" className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-body text-muted">
             {[
@@ -211,9 +212,15 @@ export default function Learn() {
           <strong>Capturing is compulsory.</strong> If any of your chips can capture, you must capture. If the chip that captured
           can capture again, it keeps going in the same turn.
         </p>
-        <p className="text-body text-muted">
-          Room option: with "take the most chips" on, you must choose the sequence that captures the most, as in tournament Damath.
+        <p>
+          <strong>The most chips come first.</strong> You must choose the capture that takes the most chips, and on equal counts a
+          dama goes before an ordinary chip.
         </p>
+        <p>
+          <strong>Auto-capture.</strong> When a capture is your only legal move, the game plays it for you after a moment and says
+          so above the ledger.
+        </p>
+        <p className="text-body text-muted">A room's host can turn off either rule before the game starts.</p>
       </Section>
 
       <Section id="scoring" title="Scoring with units">
@@ -228,7 +235,7 @@ export default function Learn() {
           <li>A subtraction below zero scores nothing.</li>
         </ul>
         <p>
-          A dama doubles the result, and taking a dama doubles it again. Energy is converted to money at <strong>₱3 per kWh</strong>.
+          A dama doubles the result, and taking a dama doubles it again. Energy is converted to money at <strong>₱{KWH_RATE} per kWh</strong>.
         </p>
         <div className="mt-2 rounded-card bg-surface p-4">
           <p className="mb-2 text-meta text-muted">Examples, as they appear in the ledger</p>
@@ -275,8 +282,8 @@ export default function Learn() {
       <Section id="ending" title="How the game ends">
         <p>The game ends when a side has no chips, the side to move has no legal move, or the game clock runs out.</p>
         <p>
-          Every chip still on the board is then added to its owner's score: its value, doubled for a dama, and ×3 for a kWh chip.
-          The <strong>higher total wins</strong>, so a side can lose all its chips and still win on points.
+          Every chip still on the board is then added to its owner's score: its value, doubled for a dama, and ×{KWH_RATE} for a kWh chip.
+          The <strong>lower total wins</strong>, so a side can lose all its chips and still win on points.
         </p>
         <p>Running out of move time loses the game outright. You can also resign or agree a draw.</p>
       </Section>

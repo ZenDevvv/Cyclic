@@ -1,6 +1,6 @@
 // Human-readable labels for chips, squares, operators and capture equations.
-import type { EndReason, Equation, Op, Piece, Side, StepRecord, Unit } from './engine.ts';
-import { xOf, yOf } from './engine.ts';
+import type { EndReason, Equation, GameState, Op, Piece, Side, StepRecord, Unit } from './engine.ts';
+import { capturesFrom, forcedStep, legalSteps, mustCaptureSquares, PLAYABLE, xOf, yOf } from './engine.ts';
 
 export const OP_SYMBOL: Record<Op, string> = { add: '+', sub: '−', mul: '×', div: '÷' };
 export const OP_NAME: Record<Op, string> = { add: 'plus', sub: 'minus', mul: 'times', div: 'divided by' };
@@ -21,7 +21,7 @@ export interface EquationParts {
   left: string;
   /** "₱12", "8 kWh" or "NS" */
   result: string;
-  /** e.g. ["×2 dama", "×3 ₱/kWh"]; empty when nothing scored */
+  /** e.g. ["×2 dama", "×5 ₱/kWh"]; empty when nothing scored */
   factors: string[];
   /** "₱24" or "₱0" */
   points: string;
@@ -37,7 +37,7 @@ export function equationParts(eq: Equation): EquationParts {
   if (scored) {
     if (eq.a.king) factors.push('×2 dama');
     if (eq.b.king) factors.push('×2 captured dama');
-    if (eq.unitFactor === 3) factors.push('×3 ₱/kWh');
+    if (eq.unitFactor > 1) factors.push(`×${eq.unitFactor} ₱/kWh`);
   }
   let reason: string | null = null;
   if (!eq.sameUnit) reason = 'Units differ';
@@ -68,6 +68,35 @@ export function stepText(r: StepRecord): string {
   if (r.equation) parts.push(equationText(r.equation));
   if (r.crowned) parts.push('crowned');
   return parts.join(' · ');
+}
+
+export interface NoticeOptions {
+  /** Forced captures play themselves in this game. */
+  autoCapture: boolean;
+  /** The side reading the message; null for spectators. */
+  viewer: Side | null;
+}
+
+/** Plain-words message about a capture the side to move cannot avoid. Null when there is nothing to say. */
+export function captureNotice(state: GameState, last: StepRecord | null, { autoCapture, viewer }: NoticeOptions): string | null {
+  if (state.result) return null;
+  const owner = (side: Side) => (side === viewer ? 'your' : `${SIDE_NAME[side]}'s`);
+  const forced = forcedStep(state);
+  if (forced) {
+    const taker = chipLabel(state.board[forced.from]!);
+    const taken = chipLabel(state.board[forced.capture!]!);
+    return `${autoCapture ? 'Auto-capture' : 'Forced capture'}: ${owner(state.turn)} ${taker} must take ${taken}.`;
+  }
+  if (viewer === state.turn && mustCaptureSquares(state).length) {
+    if (state.jumper !== null) return 'Keep capturing with this chip.';
+    let every = 0;
+    for (const i of PLAYABLE) if (state.board[i]?.side === state.turn) every += capturesFrom(state.board, i).length;
+    return every > legalSteps(state).length ? 'You must capture. The most chips come first, then a dama.' : 'You must capture. Choose your capture.';
+  }
+  if (autoCapture && last?.forced && last.captured) {
+    return `Auto-capture: ${owner(last.side)} ${chipLabel(last.piece)} took ${chipLabel(last.captured)}.`;
+  }
+  return null;
 }
 
 export const END_REASON_TEXT: Record<EndReason, string> = {

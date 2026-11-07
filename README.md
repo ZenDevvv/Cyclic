@@ -13,7 +13,7 @@ square carries + − × ÷, and a capture scores only when the arithmetic still 
 
 - **Play online**: quick match by rating (Blitz / Standard / Long), or rooms you create — invite-only with a
   link and 6-character code, or listed in the lobby. Host picks the clocks, sides, rated or casual,
-  spectators, and the tournament "take the most chips" rule.
+  spectators, the "take the most chips" rule, and auto-capture for forced moves.
 - **Server-authoritative games** with a shared, tested rules engine; server clocks (game clock + move
   clock); resign, draw offers, rematch with side swap; reconnect within 90 s after a dropped connection
   or a reload.

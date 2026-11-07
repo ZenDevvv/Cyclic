@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { io as connectClient, type Socket } from 'socket.io-client';
 import { createServer } from './app.ts';
 import { parseTrustProxy } from './config.ts';
-import { applyStep, initialState, legalSteps, replay, type GameState } from '../shared/engine.ts';
+import { applyStep, forcedStep, initialState, legalSteps, replay, sq, type GameState } from '../shared/engine.ts';
+import { AUTO_CAPTURE_MS } from '../shared/presets.ts';
 import type {
   AckResult,
   ChatMessage,
@@ -99,7 +100,9 @@ async function until(cond: () => boolean, ms = 3000, what = 'condition'): Promis
   }
 }
 
-const noClock = { gameMinutes: 0, moveSeconds: 0 };
+// Scripted games make every move themselves; auto-capture has its own tests below.
+const noClock = { gameMinutes: 0, moveSeconds: 0, autoCapture: false };
+const autoOn = { ...noClock, autoCapture: true };
 
 async function pair(settings: object = noClock, visibility: 'public' | 'private' = 'private') {
   const host = await player();
@@ -200,7 +203,11 @@ test('a full game plays to a saved result and updates both records', async () =>
     const legal = legalSteps(s);
     const pick = legal[guard % legal.length];
     const before = s.stepCount;
-    const res = await emit(mover, 'game:step', { from: pick.from, to: pick.to });
+    let res = await emit(mover, 'game:step', { from: pick.from, to: pick.to });
+    while (!res.ok && res.error === 'rate_limited') {
+      await new Promise((r) => setTimeout(r, 100)); // this loop plays faster than any person
+      res = await emit(mover, 'game:step', { from: pick.from, to: pick.to });
+    }
     assert.equal(res.ok, true, JSON.stringify(res));
     await until(() => (host.room?.game?.state.stepCount ?? 0) > before || host.room?.phase === 'ended');
   }
@@ -393,6 +400,163 @@ test('engine state from the server matches a local replay of the records', async
   let local = initialState();
   for (const r of g.room!.game!.records!) local = applyStep(local, r).state;
   assert.deepEqual(local, stateOf(g));
+});
+
+// ------------------------------------------------------------------ auto-capture
+
+/** Two quiet moves that leave red's ₱2 with one legal step: taking blue's ₱2. */
+async function toForcedCapture(host: Player, g: Player) {
+  await emit(host, 'game:step', { from: sq(5, 2), to: sq(4, 3) });
+  await until(() => stateOf(g).stepCount === 1, 3000, 'red move');
+  await emit(g, 'game:step', { from: sq(2, 5), to: sq(3, 4) });
+}
+
+const capture = { from: sq(4, 3), to: sq(2, 5) };
+
+/** Run a test on a server whose clocks are slow enough to act during the auto-capture pause. */
+async function withSlowClocks(run: () => Promise<void>) {
+  const fast = server;
+  server = await createServer({ port: 0, dbPath: ':memory:', clientDist: null, timeScale: 0.5, guestsPerMinute: 10_000 });
+  try {
+    await run();
+  } finally {
+    await server.close();
+    server = fast;
+  }
+}
+
+test('auto-capture is on by default and plays a forced capture by itself', async () => {
+  const { host, guest: g } = await started({ gameMinutes: 0, moveSeconds: 0 });
+  assert.equal(host.room?.settings.autoCapture, true);
+  await toForcedCapture(host, g);
+  await until(() => stateOf(host).stepCount >= 3, 3000, 'the auto-capture');
+  assert.deepEqual(await emit(host, 'room:sync'), { ok: true });
+  await until(() => host.room?.full === true && (host.room.game?.records?.length ?? 0) >= 3);
+  const record = host.room!.game!.records![2];
+  assert.equal(record.forced, true);
+  assert.equal(record.from, capture.from);
+  assert.equal(record.to, capture.to);
+  assert.equal(record.side, 'red');
+});
+
+test('the host can turn auto-capture off, and then the player must capture by hand', async () => {
+  const { host, guest: g } = await started(noClock);
+  assert.equal(g.room?.settings.autoCapture, false);
+  await toForcedCapture(host, g);
+  await until(() => stateOf(host).stepCount === 2, 3000, 'blue move');
+  assert.ok(forcedStep(stateOf(host)), 'the capture is forced');
+  await new Promise((r) => setTimeout(r, AUTO_CAPTURE_MS * 0.01 * 10));
+  assert.equal(stateOf(host).stepCount, 2, 'nothing played by itself');
+  assert.deepEqual(await emit(host, 'game:step', capture), { ok: true });
+  await until(() => stateOf(g).stepCount === 3, 3000, 'manual capture');
+});
+
+test('auto-capture setting: host only, fixed once the game starts, and validated', async () => {
+  const { host, guest: g } = await pair({ gameMinutes: 0, moveSeconds: 0 });
+  assert.equal(host.room?.settings.autoCapture, true);
+  assert.deepEqual(await emit(host, 'room:settings', { settings: { autoCapture: false } }), { ok: true });
+  await until(() => g.room?.settings.autoCapture === false, 3000, 'guest sees the setting');
+  const notHost = await emit(g, 'room:settings', { settings: { autoCapture: true } });
+  assert.equal(notHost.ok, false);
+  const bad = await emit(host, 'room:settings', { settings: { autoCapture: 'yes' } });
+  assert.equal(bad.ok, false);
+  assert.deepEqual(await emit(host, 'room:start'), { ok: true });
+  await until(() => host.room?.phase === 'playing', 3000, 'game start');
+  const late = await emit(host, 'room:settings', { settings: { autoCapture: true } });
+  assert.equal(late.ok, false);
+});
+
+test('a choice of captures is never played for the player', async () => {
+  const { host, guest: g } = await started(autoOn);
+  await toForcedCapture(host, g);
+  await until(() => stateOf(host).stepCount >= 3, 3000, 'red auto-capture');
+  // Blue can now retake with two different chips, so the game waits.
+  await until(() => stateOf(host).turn === 'blue' && stateOf(host).stepCount === 3, 3000, 'blue to move');
+  assert.ok(legalSteps(stateOf(host)).length > 1, 'blue has a choice');
+  await new Promise((r) => setTimeout(r, AUTO_CAPTURE_MS * 0.01 * 10));
+  assert.equal(stateOf(host).stepCount, 3);
+});
+
+test('an auto-capture is saved and replays like any other step', async () => {
+  const { host, guest: g } = await started(autoOn);
+  await toForcedCapture(host, g);
+  await until(() => stateOf(host).stepCount >= 3, 3000, 'the auto-capture');
+  assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+  await until(() => !!host.room?.game?.savedId, 3000, 'saved id');
+  const saved = await api<GameDetail>(`/games/${host.room!.game!.savedId}`);
+  assert.deepEqual(saved.body.steps[2], capture);
+  assert.equal(replay(saved.body.steps).records[2].forced, true);
+});
+
+test('resigning during the pause cancels the auto-capture', async () => {
+  await withSlowClocks(async () => {
+    const { host, guest: g } = await started(autoOn);
+    await toForcedCapture(host, g);
+    await until(() => stateOf(host).stepCount === 2, 3000, 'blue move');
+    assert.deepEqual(await emit(host, 'game:resign'), { ok: true });
+    await until(() => host.room?.phase === 'ended', 3000, 'game end');
+    await new Promise((r) => setTimeout(r, AUTO_CAPTURE_MS * 0.5 + 100));
+    assert.equal(stateOf(host).stepCount, 2, 'the capture never played');
+  });
+});
+
+test('a player can make the forced capture during the pause, and it plays only once', async () => {
+  await withSlowClocks(async () => {
+    const { host, guest: g } = await started(autoOn);
+    await toForcedCapture(host, g);
+    await until(() => stateOf(host).stepCount === 2, 3000, 'blue move');
+    assert.deepEqual(await emit(host, 'game:step', capture), { ok: true });
+    await until(() => stateOf(host).stepCount === 3, 3000, 'manual capture');
+    await new Promise((r) => setTimeout(r, AUTO_CAPTURE_MS * 0.5 + 100));
+    assert.equal(stateOf(host).stepCount, 3, 'the timer did not play it again');
+  });
+});
+
+test('capturing by hand cancels the timer, so the next forced capture still gets its full pause', async () => {
+  await withSlowClocks(async () => {
+    const pause = AUTO_CAPTURE_MS * 0.5;
+    const { host, guest: g } = await started(autoOn);
+    // Blue's forced capture is followed at once by a forced recapture for red.
+    await emit(host, 'game:step', { from: sq(1, 2), to: sq(2, 3) });
+    await until(() => stateOf(g).stepCount === 1, 3000, 'red move');
+    await emit(g, 'game:step', { from: sq(2, 5), to: sq(3, 4) });
+    await until(() => stateOf(host).stepCount === 2, 3000, 'blue move');
+    await emit(host, 'game:step', { from: sq(2, 3), to: sq(1, 4) });
+    await until(() => stateOf(g).stepCount === 3, 3000, 'red move');
+    assert.ok(forcedStep(stateOf(g)), 'blue is forced');
+
+    await new Promise((r) => setTimeout(r, pause * 0.6));
+    assert.deepEqual(await emit(g, 'game:step', { from: sq(0, 5), to: sq(2, 3) }), { ok: true });
+    await until(() => stateOf(host).stepCount === 4, 3000, 'blue capture');
+    assert.ok(forcedStep(stateOf(host)), 'red is forced now');
+
+    // Blue's old timer would have fired by now, cutting red's pause short.
+    await new Promise((r) => setTimeout(r, pause * 0.6));
+    assert.equal(stateOf(host).stepCount, 4, 'red still has its pause');
+    await until(() => stateOf(host).stepCount === 5, 3000, 'red auto-capture');
+  });
+});
+
+test('an auto-capture does not decline a draw offer the player has not seen', async () => {
+  await withSlowClocks(async () => {
+    const { host, guest: g } = await started(autoOn);
+    await toForcedCapture(host, g);
+    await until(() => stateOf(g).stepCount === 2, 3000, 'blue move');
+    assert.deepEqual(await emit(g, 'game:draw-offer'), { ok: true });
+    await until(() => stateOf(host).stepCount >= 3, 3000, 'the auto-capture');
+    assert.equal(host.room?.game?.drawOfferBy, 'blue', 'the offer still stands');
+  });
+});
+
+test('quick-match rooms use auto-capture and the most-chips rule', async () => {
+  const a = await player();
+  const b = await player();
+  await emit(a, 'queue:join', { preset: 'long' });
+  await emit(b, 'queue:join', { preset: 'long' });
+  await until(() => a.room?.phase === 'playing' && b.room?.phase === 'playing', 3000, 'match');
+  assert.equal(a.room?.settings.autoCapture, true);
+  assert.equal(stateOf(a).rules.maxCapture, true);
+  assert.deepEqual(await emit(a, 'game:resign'), { ok: true });
 });
 
 // ------------------------------------------------------------------ matchmaking

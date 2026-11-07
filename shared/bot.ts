@@ -42,8 +42,9 @@ export function turnsFrom(state: GameState): Turn[] {
 }
 
 const WIN = 100_000;
+const ADVANCE = 0.1;
 
-/** Static evaluation from `side`'s point of view, in pesos. */
+/** Static evaluation from `side`'s point of view, in pesos. The lower final score wins, so higher here is better. */
 export function evaluate(state: GameState, side: Side): number {
   if (state.result) {
     const { winner } = state.result;
@@ -52,15 +53,14 @@ export function evaluate(state: GameState, side: Side): number {
   }
   const tally = remainingTally(state.board);
   const opp = other(side);
-  // Projected final score difference: captured points plus chips still standing.
-  let score = state.scores[side] + tally[side].total - (state.scores[opp] + tally[opp].total);
-  // Small positional terms: advance toward crowning, keep damas.
+  // Projected final score difference: captured points plus chips still standing count against a side.
+  // The tally already doubles a dama, so a crown needs no bonus of its own.
+  let score = state.scores[opp] + tally[opp].total - (state.scores[side] + tally[side].total);
+  // A small nudge forward keeps games moving when the scores are level.
   for (let i = 0; i < 64; i++) {
     const p = state.board[i];
-    if (!p) continue;
-    const sign = p.side === side ? 1 : -1;
-    if (p.king) score += sign * 6;
-    else score += sign * 0.6 * (p.side === 'red' ? yOf(i) : 7 - yOf(i));
+    if (!p || p.king) continue;
+    score += (p.side === side ? 1 : -1) * ADVANCE * (p.side === 'red' ? yOf(i) : 7 - yOf(i));
   }
   return score;
 }
@@ -90,9 +90,9 @@ function negamax(state: GameState, depth: number, alpha: number, beta: number, c
   return best;
 }
 
-/** Captures and big immediate gains first, which makes alpha-beta cut far more. */
+/** Long captures and cheap turns first, which makes alpha-beta cut far more. */
 function order(turns: Turn[], side: Side): void {
-  const gain = (t: Turn) => t.state.scores[side] * 4 + t.steps.length * 3;
+  const gain = (t: Turn) => t.steps.length * 3 - t.state.scores[side] * 4;
   turns.sort((a, b) => gain(b) - gain(a));
 }
 

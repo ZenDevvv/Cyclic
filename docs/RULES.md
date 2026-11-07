@@ -4,7 +4,8 @@ This is the canonical description of the rules implemented by `shared/engine.ts`
 place these rules live; the server and the client both import it. Change a rule here, in the engine, and in
 `shared/engine.test.ts` together.
 
-Scidama is the "science" variant of Damath (Filipino math checkers). The twist: every chip carries a
+Scidama is the "science" variant of Damath (Filipino math checkers). This file describes the Grade 7 version,
+Electro Sci-Dama; see `SCIDAMA_VERSIONS.md` for the other grades. The twist: every chip carries a
 quantity with a **unit**, either pesos (₱) or kilowatt-hours (kWh), and a capture only scores when the
 arithmetic is dimensionally valid.
 
@@ -60,8 +61,15 @@ Red moves first. Red moves toward `y = 7`, blue toward `y = 0`.
 - **Multi-capture.** After a capture, if the same chip can capture again, the turn continues and that chip
   must keep capturing. Other chips may not move until the sequence ends.
 - Captured chips leave the board immediately (as in the original build).
-- **Optional room rule `maxCapture`** (off by default): the side must choose a sequence that captures the
-  most chips. Off matches the original Cyclic build; on matches official Damath tournament rules.
+- **Capture priority, room rule `maxCapture`** (on by default): the "mayor" rules. The side must choose the
+  sequence that captures the most chips, and on equal counts a dama goes before an ordinary chip. So a chip
+  taking two beats a dama taking one. A host can turn this off, which allows any capture.
+- **Auto-capture, room setting `autoCapture`** (on by default): when a capture is the only legal step, the
+  server plays it after 800 ms and every player sees a message. A dama with several landing squares has a choice,
+  so it is not forced. Each jump of a multi-capture is judged on its own. A player may make the capture during
+  the pause. An auto-capture does not decline a draw offer. This changes who plays the step, not the rules, so
+  it is not part of `Rules`, and replays need no record of it. In bot and pass-and-play games the setting is
+  a per-device preference.
 
 ## Crowning
 
@@ -85,9 +93,11 @@ Then, in order:
 
 1. ×2 if the capturing chip is a dama.
 2. ×2 if the captured chip is a dama (so dama takes dama is ×4).
-3. kWh results are converted to pesos at **₱3 per kWh** (×3).
+3. kWh results are converted to pesos at **₱5 per kWh** (×5). The rate depends on the game maker; it is one
+   constant, `KWH_RATE`, until rooms can set it.
 
-The result is added to the capturing side's score in pesos. Scores never go down.
+The result is added to the capturing side's score in pesos. Scores never go down, and **every point counts
+against you**: the lower total wins.
 
 ## End of game
 
@@ -100,11 +110,11 @@ The game ends when any of these happens:
 5. A player resigns, both agree to a draw, or a player abandons (disconnects past the grace period).
 
 For endings 1–3, every chip still on the board is added to its owner's score: its value, ×2 if it is a
-dama, ×3 if it is a kWh chip. The higher score wins; equal scores are a draw. Endings 4–5 decide the winner
+dama, ×5 if it is a kWh chip. The lower score wins; equal scores are a draw. Endings 4–5 decide the winner
 directly, but the remaining-chip tally is still computed and shown.
 
 ## Notation
 
 A move is written with absolute coordinates from red's frame, e.g. `₱8 (6,1)→(5,2)`. A capture adds its
 equation, e.g. `₱8 + ₱4 = ₱12` or `5 kWh × 3 kWh = NS`, followed by multipliers when they apply
-(`×2 dama`, `×3 ₱/kWh`) and the points scored.
+(`×2 dama`, `×5 ₱/kWh`) and the points scored.

@@ -37,6 +37,12 @@ async function newPlayer(width = 1440, height = 900): Promise<Page> {
   return page;
 }
 
+/** The capture message must be on screen and in the live region that screen readers announce. */
+async function notice(page: Page, text: string) {
+  await page.locator('p:not(.sr-only)').filter({ hasText: text }).waitFor();
+  assert.equal(await page.getByRole('status').filter({ hasText: text }).count(), 1);
+}
+
 const shot = (page: Page, name: string) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 
 /** Click a playable square by its coordinate (accessible names start with "(x,y),"). */
@@ -94,15 +100,17 @@ test('a private room: invite link, start, captures in the ledger, chat, resign, 
   await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
   await friend.getByRole('group', { name: /Board, red to move/ }).waitFor();
 
-  // Red ₱2 forward, blue ₱2 forward, then both captures are forced.
+  // Red ₱2 forward, blue ₱2 forward. Red's capture is then the only legal move, so it plays itself.
   await move(host, [5, 2], [4, 3]);
   await friend.getByRole('group', { name: /blue to move/ }).waitFor();
   await move(friend, [2, 5], [3, 4]);
   await host.getByRole('group', { name: /red to move/ }).waitFor();
-  await click(host, 4, 3);
-  await shot(host, '03-capture-preview');
-  await click(host, 2, 5); // ₱2 + ₱2 on a + square
-  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  await notice(host, 'Auto-capture: your ₱2 must take ₱2.');
+  await notice(friend, "Auto-capture: Red's ₱2 must take ₱2.");
+  await shot(host, '03-auto-capture');
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor(); // ₱2 + ₱2 on a + square, played by the game
+  await host.getByRole('log', { name: 'Moves and captures' }).getByText('forced').waitFor();
+  await notice(friend, 'You must capture. Choose your capture.');
   await move(friend, [1, 6], [3, 4]); // ₱8 − ₱2 on a − square
 
   for (const p of [host, friend]) {
@@ -138,6 +146,63 @@ test('a private room: invite link, start, captures in the ledger, chat, resign, 
   // The finished game has a replay.
   const res = await fetch(`${server.url}/api/leaderboard`);
   assert.equal(res.status, 200);
+});
+
+test('pass and play: auto-capture, its message, take back, and the setting that turns it off', async () => {
+  const page = await newPlayer();
+  const ledger = page.getByRole('log', { name: 'Moves and captures' });
+  await page.goto(server.url + '/play/local');
+  await page.getByRole('group', { name: /Board, red to move/ }).waitFor();
+
+  // A previous forced capture must not trap Take back: it returns to the last real choice.
+  await move(page, [5, 2], [4, 3]);
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(page, [2, 5], [3, 4]);
+  await notice(page, 'Auto-capture: your ₱2 must take ₱2.');
+  await ledger.getByText('forced').waitFor();
+  await notice(page, 'You must capture. Choose your capture.');
+  await page.getByRole('button', { name: 'Take back' }).click();
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await page.waitForTimeout(1200); // longer than the pause: nothing may replay by itself
+  assert.equal(await ledger.getByText('forced').count(), 0, 'taking back stays taken back');
+
+  // With the setting off, the message still warns but the player makes the capture.
+  await page.goto(server.url + '/settings');
+  await page.getByRole('switch', { name: /Auto-capture on this device/ }).click();
+  await page.goto(server.url + '/play/local');
+  await page.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(page, [2, 5], [3, 4]);
+  await notice(page, 'Forced capture: your ₱2 must take ₱2.');
+  await page.waitForTimeout(1200);
+  assert.equal(await ledger.getByText('forced').count(), 0, 'nothing played by itself');
+  await move(page, [4, 3], [2, 5]);
+  await ledger.getByText('forced').waitFor();
+});
+
+test('a host can turn auto-capture off for the room', async () => {
+  const host = await newPlayer();
+  const friend = await newPlayer();
+  await host.goto(server.url + '/play');
+  await host.getByRole('button', { name: 'Create a room' }).first().click();
+  await host.getByRole('radio', { name: 'Red', exact: true }).click();
+  await host.getByRole('radio', { name: 'None' }).last().click();
+  const toggle = host.getByRole('switch', { name: /^Auto-capture/ });
+  assert.equal(await toggle.getAttribute('aria-checked'), 'true', 'on by default');
+  await toggle.click();
+  await host.getByRole('button', { name: 'Create room' }).click();
+  await host.waitForURL(/\/room\//);
+  await friend.goto(host.url());
+  await friend.getByText('Waiting for').first().waitFor();
+  await friend.getByText('Off', { exact: true }).waitFor(); // the guest can see the host's choice
+  await host.getByRole('button', { name: 'Start game' }).click();
+  await host.getByRole('group', { name: /Board, red to move/ }).waitFor();
+  await move(host, [5, 2], [4, 3]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
+  await move(friend, [2, 5], [3, 4]);
+  await notice(host, 'Forced capture: your ₱2 must take ₱2.');
+  await host.waitForTimeout(1200);
+  await move(host, [4, 3], [2, 5]);
+  await friend.getByRole('group', { name: /blue to move/ }).waitFor();
 });
 
 test('quick match puts two players into the same game', async () => {

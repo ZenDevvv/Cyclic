@@ -19,6 +19,8 @@ export interface Prefs {
   botLevel: BotLevel;
   botSide: Side | 'random';
   localAutoFlip: boolean;
+  /** Bot and pass-and-play games; online, the room's host decides. */
+  autoCapture: boolean;
   set: (patch: Partial<Omit<Prefs, 'set'>>) => void;
 }
 
@@ -36,6 +38,7 @@ export const usePrefs = create<Prefs>()(
       botLevel: 'medium',
       botSide: 'red',
       localAutoFlip: false,
+      autoCapture: true,
       set: (patch) => set(patch),
     }),
     { name: 'scidama.prefs', version: 1 },

@@ -132,8 +132,14 @@ export default function Settings() {
         </div>
       </Row>
 
-      <Row title="Games" description="Safety catches for online games.">
+      <Row title="Games" description="Safety catches online, and how games on this device play.">
         <Switch checked={prefs.confirmResign} onChange={(v) => prefs.set({ confirmResign: v })} label="Ask before resigning" />
+        <Switch
+          checked={prefs.autoCapture}
+          onChange={(v) => prefs.set({ autoCapture: v })}
+          label="Auto-capture on this device"
+          description="In bot and pass-and-play games, a capture that is your only legal move plays itself. Online, the room's host decides."
+        />
       </Row>
     </div>
   );

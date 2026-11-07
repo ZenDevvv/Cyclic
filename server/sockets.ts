@@ -16,6 +16,7 @@ const settingsSchema = z
     hostSide: z.enum(['red', 'blue', 'random']),
     allowSpectators: z.boolean(),
     maxCapture: z.boolean(),
+    autoCapture: z.boolean(),
   })
   .partial()
   .strict();

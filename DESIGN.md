@@ -141,6 +141,8 @@ Board themes (Settings → Board): **Felt** (default, above), **Slate** (`#d9dad
 - Input: click a chip then a target, or drag. Both share one code path.
 - Marks: last move = amber tint on both squares; selected chip = 3 px amber ring; legal target = amber dot
   (28 % of the square); chips that must capture = 2 px amber ring; illegal attempt = a 120 ms shake.
+- A capture the player cannot avoid also gets a one-line message above the ledger, because Settings can turn
+  the rings off. It is a `--raised` panel, not amber, and it repeats in a screen-reader live region.
 - Coordinates inset in the edge squares at 11 px (toggle in Settings), flipping with the board.
 - Chips slide 180 ms ease-out; captured chips fade 160 ms. With `prefers-reduced-motion` or the setting
   off, they jump.

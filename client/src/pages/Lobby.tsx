@@ -283,7 +283,7 @@ function OpenRoomRow({ room }: { room: OpenRoom }) {
         </p>
         <p className="num truncate text-meta text-muted">
           {timeControlLabel(room.settings)}
-          {room.settings.maxCapture ? ' · most-chips rule' : ''}
+          {room.settings.maxCapture ? '' : ' · any capture'}
           {' · '}
           {room.joinerSide === 'random' ? 'random sides' : `you play ${room.joinerSide}`}
         </p>

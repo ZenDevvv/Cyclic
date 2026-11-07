@@ -16,11 +16,14 @@ export interface Piece {
 export type Cell = Piece | null;
 
 export interface Rules {
-  /** Official Damath rule: a side must take the sequence that captures the most chips. */
+  /** The "mayor" rules: a side must take the sequence with the most chips; on equal counts a dama goes first. */
   maxCapture: boolean;
 }
 
-export const DEFAULT_RULES: Rules = { maxCapture: false };
+export const DEFAULT_RULES: Rules = { maxCapture: true };
+
+/** Pesos per kWh. It depends on the game maker; one value so a room setting can replace it later. */
+export const KWH_RATE = 5;
 
 /** A step is one plain move or one jump. A multi-capture is several steps by the same side. */
 export interface Step {
@@ -42,7 +45,7 @@ export interface Equation {
   base: number | null;
   /** ×2 for an attacking dama, ×2 for a captured dama. */
   kingFactor: number;
-  /** ×3 when the result is in kWh (₱3 per kWh). */
+  /** KWH_RATE when the result is in kWh, otherwise 1. */
   unitFactor: number;
   /** Pesos added to the attacker's score. */
   points: number;
@@ -63,6 +66,8 @@ export interface StepRecord {
   crowned: boolean;
   /** True when the same chip must capture again (the turn is not over). */
   continues: boolean;
+  /** True when this capture was the only legal step. */
+  forced: boolean;
 }
 
 export type EndReason =
@@ -266,10 +271,13 @@ export function longestChain(board: readonly Cell[], from: number, depth = 0): n
   return best;
 }
 
-function keepLongest(board: readonly Cell[], steps: LegalStep[]): LegalStep[] {
+/** The "mayor" rules: most chips first, then a dama over an ordinary chip on equal counts. */
+function keepPriority(board: readonly Cell[], steps: LegalStep[]): LegalStep[] {
   const scored = steps.map((s) => ({ s, n: 1 + longestChain(jumpBoard(board, s), s.to) }));
   const max = Math.max(...scored.map((x) => x.n));
-  return scored.filter((x) => x.n === max).map((x) => x.s);
+  const longest = scored.filter((x) => x.n === max).map((x) => x.s);
+  const damas = longest.filter((s) => board[s.from]?.king);
+  return damas.length ? damas : longest;
 }
 
 export function legalSteps(state: GameState): LegalStep[] {
@@ -277,13 +285,13 @@ export function legalSteps(state: GameState): LegalStep[] {
   const { board } = state;
   if (state.jumper !== null) {
     const caps = capturesFrom(board, state.jumper);
-    return state.rules.maxCapture && caps.length ? keepLongest(board, caps) : caps;
+    return state.rules.maxCapture && caps.length ? keepPriority(board, caps) : caps;
   }
   const captures: LegalStep[] = [];
   for (const i of PLAYABLE) {
     if (board[i]?.side === state.turn) captures.push(...capturesFrom(board, i));
   }
-  if (captures.length) return state.rules.maxCapture ? keepLongest(board, captures) : captures;
+  if (captures.length) return state.rules.maxCapture ? keepPriority(board, captures) : captures;
   const moves: LegalStep[] = [];
   for (const i of PLAYABLE) {
     if (board[i]?.side === state.turn) moves.push(...plainMovesFrom(board, i));
@@ -298,6 +306,12 @@ export function mustCaptureSquares(state: GameState): number[] {
   return [...new Set(steps.map((s) => s.from))];
 }
 
+/** The capture a side has no choice about: the only legal step. Null when there is a choice or no capture. */
+export function forcedStep(state: GameState): LegalStep | null {
+  const steps = legalSteps(state);
+  return steps.length === 1 && steps[0].capture !== null ? steps[0] : null;
+}
+
 // ---------------------------------------------------------------- scoring
 
 export function scoreCapture(attacker: Piece, captured: Piece, op: Op): Equation {
@@ -309,7 +323,7 @@ export function scoreCapture(attacker: Piece, captured: Piece, op: Op): Equation
     base = diff >= 0 ? diff : null;
   }
   const kingFactor = (attacker.king ? 2 : 1) * (captured.king ? 2 : 1);
-  const unitFactor = attacker.unit === 'kWh' ? 3 : 1;
+  const unitFactor = attacker.unit === 'kWh' ? KWH_RATE : 1;
   return {
     op,
     a: { unit: attacker.unit, value: attacker.value, king: attacker.king },
@@ -323,7 +337,7 @@ export function scoreCapture(attacker: Piece, captured: Piece, op: Op): Equation
 }
 
 /** Pesos a chip is worth when it is still on the board at the end. */
-export const piecePoints = (p: Piece): number => p.value * (p.king ? 2 : 1) * (p.unit === 'kWh' ? 3 : 1);
+export const piecePoints = (p: Piece): number => p.value * (p.king ? 2 : 1) * (p.unit === 'kWh' ? KWH_RATE : 1);
 
 export function remainingTally(board: readonly Cell[]): Record<Side, Tally> {
   const tally: Record<Side, Tally> = { red: { items: [], total: 0 }, blue: { items: [], total: 0 } };
@@ -348,13 +362,14 @@ export class IllegalStepError extends Error {}
  * Ends the game (elimination or blocked) when the turn passes to a side that cannot continue.
  */
 export function applyStep(state: GameState, step: Step): { state: GameState; record: StepRecord } {
-  const legal = legalSteps(state).find((s) => s.from === step.from && s.to === step.to);
+  const steps = legalSteps(state);
+  const legal = steps.find((s) => s.from === step.from && s.to === step.to);
   if (!legal) throw new IllegalStepError(`Illegal step ${step.from}→${step.to}`);
-  return applyLegalStep(state, legal);
+  return applyLegalStep(state, legal, steps.length === 1 && legal.capture !== null);
 }
 
 /** Apply a step already known to be legal (used by the bot's search). */
-export function applyLegalStep(state: GameState, legal: LegalStep): { state: GameState; record: StepRecord } {
+export function applyLegalStep(state: GameState, legal: LegalStep, forced = false): { state: GameState; record: StepRecord } {
   const board = state.board.slice();
   const piece = board[legal.from]!;
   const side = piece.side;
@@ -403,6 +418,7 @@ export function applyLegalStep(state: GameState, legal: LegalStep): { state: Gam
     points,
     crowned,
     continues,
+    forced,
   };
 
   if (!continues) {
@@ -413,7 +429,7 @@ export function applyLegalStep(state: GameState, legal: LegalStep): { state: Gam
 }
 
 /**
- * Finish the game. For elimination, blocked and time, the higher final score wins.
+ * Finish the game. For elimination, blocked and time, the lower final score wins.
  * For timeout, resign and abandon pass the winner; agreement is a draw.
  */
 export function endGame(state: GameState, reason: EndReason, winner?: Side | null): GameState {
@@ -426,7 +442,7 @@ export function endGame(state: GameState, reason: EndReason, winner?: Side | nul
   let w: Side | null;
   if (reason === 'agreement') w = null;
   else if (winner !== undefined) w = winner;
-  else w = final.red === final.blue ? null : final.red > final.blue ? 'red' : 'blue';
+  else w = final.red === final.blue ? null : final.red < final.blue ? 'red' : 'blue';
   return { ...state, jumper: null, result: { winner: w, reason, tally, final } };
 }
 

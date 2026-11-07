@@ -24,7 +24,7 @@ export function resultReason(result: GameResult, players: Record<Side, PlayerInf
   if (loser && result.reason === 'resign') return `${loser} resigned.`;
   if (loser && result.reason === 'timeout') return `${loser} ran out of move time.`;
   if (loser && result.reason === 'abandon') return `${loser} left the game.`;
-  return `${END_REASON_TEXT[result.reason]}. The higher total wins.`;
+  return `${END_REASON_TEXT[result.reason]}. The lower total wins.`;
 }
 
 export function resultTitle(result: GameResult, players: Record<Side, PlayerInfo | null>, mySide: Side | null): string {

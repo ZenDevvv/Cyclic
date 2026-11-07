@@ -1,6 +1,6 @@
 // The capture ledger: the move list written as the equations each capture scored.
 import { useEffect, useMemo, useRef } from 'react';
-import type { Side, StepRecord } from '../../../../shared/engine.ts';
+import { KWH_RATE, type Side, type StepRecord } from '../../../../shared/engine.ts';
 import { chipLabel, coord, equationParts } from '../../../../shared/notation.ts';
 import { SideDot } from '../ui/controls.tsx';
 
@@ -89,7 +89,7 @@ function ScoringGuide() {
   const rows: [string, string, boolean][] = [
     ['₱8 + ₱4 = ₱12', '+₱12', true],
     ['₱8 − ₱4 = ₱4', '+₱4', true],
-    ['5 kWh + 3 kWh = 8 kWh · ×3 ₱/kWh', '+₱24', true],
+    [`5 kWh + 3 kWh = 8 kWh · ×${KWH_RATE} ₱/kWh`, `+₱${8 * KWH_RATE}`, true],
     ['₱8 × ₱4 = NS', 'Not pesos', false],
     ['₱8 + 3 kWh = NS', 'Units differ', false],
   ];
@@ -122,6 +122,7 @@ function StepLine({ r, current, onSelect }: { r: StepRecord; current: boolean; o
             {coord(r.from)}→{coord(r.to)}
           </span>
           {r.crowned && <span className="text-ink"> · crowned</span>}
+          {r.forced && <span className="text-faint"> · forced</span>}
         </span>
       </span>
       {eq && (

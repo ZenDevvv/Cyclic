@@ -1,11 +1,14 @@
 // Offline play on this device: against the bot (in a worker) or pass-and-play. Not rated, kept across reloads.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { endGame, other, replay, type GameState, type Side, type Step, type StepRecord } from '../../../shared/engine.ts';
+import { endGame, forcedStep, other, replay, type GameState, type Side, type Step, type StepRecord } from '../../../shared/engine.ts';
+import { captureNotice } from '../../../shared/notation.ts';
+import { AUTO_CAPTURE_MS } from '../../../shared/presets.ts';
 import { BOT_LEVELS, type BotLevel } from '../../../shared/bot.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
 import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
+import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, IconButton } from '../components/ui/Button.tsx';
 import { Dialog } from '../components/ui/Dialog.tsx';
@@ -129,6 +132,15 @@ export function LocalGame({ mode }: { mode: Mode }) {
 
   const onStep = useCallback((step: Step) => setGame((g) => ({ ...g, steps: [...g.steps, step] })), []);
 
+  // A capture that is your only legal step plays itself, as it does online. The bot plays its own.
+  const forced = useMemo(() => (prefs.autoCapture && humanTurn ? forcedStep(state) : null), [prefs.autoCapture, humanTurn, state]);
+  useEffect(() => {
+    if (!forced) return;
+    const timer = setTimeout(() => onStep({ from: forced.from, to: forced.to }), AUTO_CAPTURE_MS);
+    return () => clearTimeout(timer);
+  }, [forced, onStep]);
+  const notice = captureNotice(state, last, { autoCapture: prefs.autoCapture, viewer: mode === 'bot' ? game.you : state.turn });
+
   const newGame = (patch: Partial<Saved> = {}) => {
     cancelRef.current();
     setResultOpen(false);
@@ -139,11 +151,13 @@ export function LocalGame({ mode }: { mode: Mode }) {
     if (patch.level) prefs.set({ botLevel: patch.level });
   };
 
+  // Taking back an auto-capture would only make it play again, so go back to the last real choice.
+  const takeBackable = (mode === 'bot' ? records.filter((r) => r.side === game.you) : records).filter((r) => !(prefs.autoCapture && r.forced));
+
   const undo = () => {
     cancelRef.current();
     // Back to the start of your previous turn (bot) or the previous turn (pass and play).
-    const mine = mode === 'bot' ? records.filter((r) => r.side === game.you) : records;
-    const lastTurn = mine[mine.length - 1];
+    const lastTurn = takeBackable[takeBackable.length - 1];
     if (!lastTurn) return;
     const firstIndex = records.find((r) => r.turn === lastTurn.turn)!.index;
     play('move');
@@ -171,6 +185,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
 
   return (
     <>
+      <CaptureAnnouncer text={notice} />
       <GameLayout
         header={
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -192,7 +207,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
             board={state.board}
             state={state}
             orientation={orientation}
-            interactive={humanTurn && !state.result}
+            interactive={humanTurn && !state.result && !forced}
             onStep={onStep}
             onIllegal={playIllegal}
             last={mark}
@@ -201,6 +216,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
         }
         top={strip(topSide)}
         bottom={strip(bottomSide)}
+        banner={notice ? <CaptureNotice text={notice} /> : undefined}
         panel={
           <>
             <div className="flex items-center justify-between px-5.5 pt-4 pb-2">
@@ -214,7 +230,7 @@ export function LocalGame({ mode }: { mode: Mode }) {
         }
         actions={
           <>
-            <Button icon="refresh" variant="ghost" onClick={undo} disabled={!records.length || (mode === 'bot' && !records.some((r) => r.side === game.you))}>
+            <Button icon="refresh" variant="ghost" onClick={undo} disabled={!takeBackable.length}>
               Take back
             </Button>
             {mode === 'bot' && !state.result && (

@@ -32,6 +32,8 @@ export interface RoomSettings {
   hostSide: HostSide;
   allowSpectators: boolean;
   maxCapture: boolean;
+  /** The server plays a capture by itself when it is the only legal step. */
+  autoCapture: boolean;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -40,8 +42,12 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   rated: false,
   hostSide: 'random',
   allowSpectators: true,
-  maxCapture: false,
+  maxCapture: true,
+  autoCapture: true,
 };
+
+/** How long a forced capture stays on screen before it plays. */
+export const AUTO_CAPTURE_MS = 800;
 
 export function timeControlLabel(s: Pick<RoomSettings, 'gameMinutes' | 'moveSeconds'>): string {
   if (!s.gameMinutes && !s.moveSeconds) return 'No clock';

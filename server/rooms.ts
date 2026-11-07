@@ -4,6 +4,7 @@ import { randomInt } from 'node:crypto';
 import {
   applyStep,
   endGame,
+  forcedStep,
   IllegalStepError,
   initialState,
   other,
@@ -15,6 +16,7 @@ import {
 } from '../shared/engine.ts';
 import { encodeBoard } from '../shared/codec.ts';
 import {
+  AUTO_CAPTURE_MS,
   DEFAULT_ROOM_SETTINGS,
   PRESETS,
   RECONNECT_GRACE_SECONDS,
@@ -99,7 +101,7 @@ interface Room {
   chat: ChatMessage[];
   createdAt: number;
   endedAt: number | null;
-  timers: { move?: NodeJS.Timeout; game?: NodeJS.Timeout; forfeit: Partial<Record<Side, NodeJS.Timeout>> };
+  timers: { move?: NodeJS.Timeout; game?: NodeJS.Timeout; forced?: NodeJS.Timeout; forfeit: Partial<Record<Side, NodeJS.Timeout>> };
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -532,18 +534,40 @@ export class RoomManager {
       if (err instanceof IllegalStepError) throw new RoomError('illegal', 'That move is not allowed.');
       throw err;
     }
+    if (game.drawOfferBy && game.drawOfferBy !== side) game.drawOfferBy = null; // moving declines
+    this.commit(room, game, step, applied);
+  }
+
+  private commit(room: Room, game: LiveGameState, step: Step, applied: ReturnType<typeof applyStep>): void {
+    if (room.timers.forced) clearTimeout(room.timers.forced);
+    delete room.timers.forced;
     game.state = applied.state;
     game.records.push(applied.record);
     game.steps.push({ from: step.from, to: step.to });
     game.lastStep = applied.record;
-    if (game.drawOfferBy && game.drawOfferBy !== side) game.drawOfferBy = null; // moving declines
     if (game.state.result) {
       this.finish(room, game.state);
       return;
     }
     this.resetMoveClock(room);
+    this.scheduleForced(room, game);
     this.broadcast(room);
     this.scheduleLobby();
+  }
+
+  /** A capture that is the only legal step plays itself after a pause, so players can see it coming. */
+  private scheduleForced(room: Room, game: LiveGameState): void {
+    if (!room.settings.autoCapture || !forcedStep(game.state)) return;
+    room.timers.forced = setTimeout(() => this.onForced(room, game), AUTO_CAPTURE_MS * this.timeScale);
+  }
+
+  private onForced(room: Room, game: LiveGameState): void {
+    delete room.timers.forced;
+    const forced = forcedStep(game.state);
+    if (!forced) return;
+    // Not the player's own move, so unlike step() it leaves a draw offer standing.
+    const step = { from: forced.from, to: forced.to };
+    this.commit(room, game, step, applyStep(game.state, step));
   }
 
   resign(socket: IOSocket): void {
@@ -701,6 +725,7 @@ export class RoomManager {
   private clearTimers(room: Room): void {
     if (room.timers.move) clearTimeout(room.timers.move);
     if (room.timers.game) clearTimeout(room.timers.game);
+    if (room.timers.forced) clearTimeout(room.timers.forced);
     for (const t of Object.values(room.timers.forfeit)) clearTimeout(t);
     room.timers = { forfeit: {} };
   }

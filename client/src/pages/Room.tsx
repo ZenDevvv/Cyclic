@@ -1,13 +1,15 @@
 // An online room: the waiting room before the game, then the game itself, then the result and rematch.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
+import { forcedStep, initialBoard, other, type Side, type Step } from '../../../shared/engine.ts';
+import { captureNotice } from '../../../shared/notation.ts';
 import { timeControlLabel, type RoomSettings } from '../../../shared/presets.ts';
 import type { RoomSnapshot, SeatView, Visibility } from '../../../shared/protocol.ts';
 import { Board, type BoardMark } from '../components/board/Board.tsx';
 import { GameLayout } from '../components/game/GameLayout.tsx';
 import { PlayerStrip, type PlayerInfo } from '../components/game/PlayerStrip.tsx';
 import { Ledger } from '../components/game/Ledger.tsx';
+import { CaptureAnnouncer, CaptureNotice } from '../components/game/CaptureNotice.tsx';
 import { Chat } from '../components/game/Chat.tsx';
 import { ResultDialog, resultTitle } from '../components/game/ResultDialog.tsx';
 import { Button, ButtonLink, IconButton } from '../components/ui/Button.tsx';
@@ -273,6 +275,8 @@ function WaitingRoom({ snap, spectator }: { snap: RoomSnapshot; spectator: boole
                 <dd>{timeControlLabel(snap.settings)}</dd>
                 <dt className="text-muted">Capturing</dt>
                 <dd>{snap.settings.maxCapture ? 'Must take the most chips' : 'Any capture'}</dd>
+                <dt className="text-muted">Auto-capture</dt>
+                <dd>{snap.settings.autoCapture ? 'On' : 'Off'}</dd>
                 <dt className="text-muted">Spectators</dt>
                 <dd>{snap.settings.allowSpectators ? 'Allowed' : 'Not allowed'}</dd>
               </dl>
@@ -367,6 +371,10 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
     blue: seatInfo(snap.seats.blue, me?.id, snap.hostId),
   };
   const last = game.lastStep;
+  const { autoCapture } = snap.settings;
+  const notice = captureNotice(state, last, { autoCapture, viewer: mySide });
+  // The server is about to play this capture, so the board waits instead of racing it.
+  const autoPending = autoCapture && forcedStep(state) !== null;
   const mark: BoardMark | null = last ? { from: last.from, to: last.to, captureSquare: last.captureSquare, captured: last.captured, key: last.index } : null;
   const moveLeft = game.clock.moveEndsAt ? game.clock.moveEndsAt - sNow : null;
   const gameLeft = game.clock.gameEndsAt ? game.clock.gameEndsAt - sNow : null;
@@ -428,6 +436,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
 
   return (
     <>
+      <CaptureAnnouncer text={notice} />
       <GameLayout
         header={
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -445,7 +454,7 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
             board={state.board}
             state={state}
             orientation={orientation}
-            interactive={!!mySide && playing && state.turn === mySide && !pending}
+            interactive={!!mySide && playing && state.turn === mySide && !pending && !autoPending}
             onStep={onStep}
             onIllegal={playIllegal}
             last={mark}
@@ -454,7 +463,16 @@ function OnlineGame({ snap }: { snap: RoomSnapshot }) {
         }
         top={strip(other(orientation))}
         bottom={strip(orientation)}
-        banner={banner}
+        banner={
+          notice ? (
+            <div className="flex flex-col gap-3.5">
+              <CaptureNotice text={notice} />
+              {banner}
+            </div>
+          ) : (
+            banner
+          )
+        }
         panel={
           <>
             <div className="flex items-center justify-between gap-3 px-5.5 pt-2">

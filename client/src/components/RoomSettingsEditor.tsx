@@ -76,7 +76,14 @@ export function SettingsEditor({
           disabled={disabled}
           onChange={(v) => onChange({ maxCapture: v })}
           label="Take the most chips"
-          description="Tournament rule: you must choose the capture sequence that takes the most chips."
+          description="You must choose the capture that takes the most chips. On equal counts, a dama goes first."
+        />
+        <Switch
+          checked={settings.autoCapture}
+          disabled={disabled}
+          onChange={(v) => onChange({ autoCapture: v })}
+          label="Auto-capture"
+          description="A capture that is the only legal move plays itself, with a message saying so."
         />
       </div>
     </div>
